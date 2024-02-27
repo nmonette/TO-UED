@@ -26,7 +26,7 @@ class LPGGRU(nn.Module):
         """Applies the module."""
         # Reset GRU at terminal states
         gru_state = jnp.where(done, jnp.zeros_like(gru_state), gru_state)
-        new_gru_state, y = nn.GRUCell()(gru_state, x)
+        new_gru_state, y = nn.GRUCell(features=len(gru_state))(gru_state, x)
         return new_gru_state, y
 
     @staticmethod

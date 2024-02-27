@@ -6,6 +6,7 @@ from jax import random
 from jax.tree_util import tree_map
 from flax import struct
 from functools import partial
+from typing import Callable
 
 from util import *
 from environments.environments import get_env, reset_env_params, get_env_spec
@@ -47,7 +48,6 @@ class LevelBuffer:
 
     def __len__(self):
         return self.score.shape[0]
-
 
 class LevelSampler:
     """Level sampler, containing methods for domain randomisation and prioritised level replay."""

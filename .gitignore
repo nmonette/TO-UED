@@ -8,3 +8,4 @@ __pycache__/
 checkpoints/
 wandb/
 docker/wandb_key
+setup/wandb_key
