@@ -17,7 +17,9 @@ train_eg.py --num_agents 32 --num_mini_batches 16 --log --wandb_entity nathanmon
 Also, when done with train_eg.py, run:
 ```
 train.py --num_agents 32 --num_mini_batches 16 --log --wandb_entity nathanmonette1 --wandb_project gt-ued --train_steps 6e4
-``` Note that we double the amount of train steps here to account for the nature of the new update model
+``` 
+
+Note that we double the amount of train steps here to account for the nature of the new update model
 
 GROOVE is the official implementation of the following publications:
 1. *Discovering General Reinforcement Learning Algorithms with Adversarial Environment Design, NeurIPS 2023* [[ArXiv](https://arxiv.org/abs/2310.02782) | [NeurIPS](https://neurips.cc/virtual/2023/poster/70658) | [Twitter](https://twitter.com/JacksonMattT/status/1709955868467626058)]
