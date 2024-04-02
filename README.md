@@ -11,12 +11,12 @@
 
 Some notes for nate: command for running code is as follows:
 ```
-train_eg.py --num_agents 32 --num_mini_batches 16 --log --wandb_entity nathanmonette1 --wandb_project gt-ued
+train_eg.py --num_agents 32 --num_mini_batches 16 --log --wandb_entity nathanmonette1 --wandb_project gt-ued --train_steps 1.5e4
 ```
 
 Also, when done with train_eg.py, run:
 ```
-train.py --num_agents 32 --num_mini_batches 16 --log --wandb_entity nathanmonette1 --wandb_project gt-ued --train_steps 6e4
+train.py --num_agents 32 --num_mini_batches 16 --log --wandb_entity nathanmonette1 --wandb_project gt-ued 
 ``` 
 
 Note that we double the amount of train steps here to account for the nature of the new update model
