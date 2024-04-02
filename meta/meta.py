@@ -30,9 +30,9 @@ def create_lpg_train_state(rng, args):
     return ESTrainState(train_state, es_strategy, es_params, es_state)
 
 
-def make_lpg_train_step(args, rollout_manager):
+def make_lpg_train_step(args, rollout_manager, single_env=False):
     lpg_hypers = LpgHyperparams.from_run_args(args)
-    if args.use_es:
+    if args.use_es and not single_env:
         return partial(
             lpg_es_train_step,
             rollout_manager=rollout_manager,

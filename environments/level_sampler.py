@@ -1,3 +1,5 @@
+from typing import List
+
 import chex
 import jax
 import jax.numpy as jnp
@@ -412,3 +414,17 @@ class LevelSampler:
     @property
     def obs_shape(self):
         return self.env.observation_space(self.env.default_params).shape
+
+class SingleLevelSampler(LevelSampler):
+     def __init__(self, args):
+         super().__init__(args)
+
+         
+        
+        
+
+        
+
+
+
+
