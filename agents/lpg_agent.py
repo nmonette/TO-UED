@@ -5,6 +5,7 @@ import jax.numpy as jnp
 from typing import Any
 from functools import partial
 from flax.training.train_state import TrainState
+from flax import struct
 
 from util import *
 

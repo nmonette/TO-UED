@@ -44,6 +44,22 @@ def parse_args(cmd_args=sys.argv[1:]):
         default=16,
     )
 
+    # Double Oracle args
+    parser.add_argument(
+        "-br",
+        "--best-response-length",
+        help="Number of best response iterates",
+        dest="br", 
+        default=10
+    )
+    parser.add_argument(
+        "-doi",
+        "--double-oracle-iterations",
+        help="Number of double oracle iterates",
+        dest="doi",
+        default=10
+    )
+
     # Logging
     parser.add_argument("--log", action="store_true", help="Log with WandB")
     parser.add_argument("--wandb_project", type=str, help="Wandb project")

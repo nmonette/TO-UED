@@ -415,10 +415,6 @@ class LevelSampler:
     def obs_shape(self):
         return self.env.observation_space(self.env.default_params).shape
 
-class SingleLevelSampler(LevelSampler):
-     def __init__(self, args):
-         super().__init__(args)
-
          
         
         

@@ -1,5 +1,6 @@
 import jax
 import chex
+from flax import struct
 
 from util import *
 from models.agent import Actor, ConvActor, Critic, ConvCritic
