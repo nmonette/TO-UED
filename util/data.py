@@ -4,8 +4,6 @@ from flax.training.train_state import TrainState
 from evosax import Strategy, EvoParams, EvoState
 from typing import Any, Union
 
-from environments.level_sampler import SingleLevelSampler as SLSampler
-
 @struct.dataclass
 class LpgHyperparams:
     """

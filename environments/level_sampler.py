@@ -94,7 +94,7 @@ class LevelSampler:
         rng = jax.random.split(rng, self.buffer_size)
         random_params, random_lifetimes = self._sample_env_params(rng)
         return LevelBuffer.create_buffer(random_params, random_lifetimes)
-
+ 
     @partial(jax.vmap, in_axes=(None, 0))
     def _sample_env_params(self, rng):
         """Sample a batch of environment parameters and agent lifetimes."""

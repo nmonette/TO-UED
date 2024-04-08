@@ -7,7 +7,6 @@ from models.agent import Actor, ConvActor, Critic, ConvCritic
 from models.optim import create_optimizer
 from environments.environments import get_agent_hypers
 
-
 @struct.dataclass
 class AgentHyperparams:
     actor_net: tuple

@@ -7,7 +7,7 @@ from models.optim import create_optimizer, create_es_strategy
 from meta.train import lpg_meta_grad_train_step, lpg_es_train_step
 
 
-def create_lpg_train_state(rng, args):
+def create_lpg_train_state(rng, args, single_env=False):
     """
     Initialises an LPG instance.
     Returns TrainState if using meta-gradients, return ESTrainState if using ES.
@@ -22,7 +22,7 @@ def create_lpg_train_state(rng, args):
     params = lpg_model.init(rng, r, d, pi, yt, yt1, step, lifetime)["params"]
     tx = create_optimizer(args.lpg_opt, args.lpg_learning_rate, args.lpg_max_grad_norm)
     train_state = TrainState.create(apply_fn=lpg_model.apply, params=params, tx=tx)
-    if not args.use_es:
+    if not args.use_es or single_env:
         return train_state
     es_strategy = create_es_strategy(args, train_state.params)
     es_params = es_strategy.default_params

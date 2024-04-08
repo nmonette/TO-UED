@@ -79,4 +79,4 @@ def main(cmd_args=sys.argv[1:]):
 
 if __name__ == "__main__":
     install()
-    main()
+    main(main("--num_agents 32 --debug --buffer_size 16 --num_mini_batches 8 --use_es --lifetime_conditioning".split(" ")))

@@ -136,7 +136,7 @@ class GridWorld(environment.Environment):
             done,
             info
         )
-
+    
     def _get_next_pos(self, pos: int, action: int, params: EnvParams) -> int:
         top_row, bottom_row = (pos < params.grid_size), (pos >= params.grid_size * (params.grid_size - 1))
         left_column, right_column = (pos % params.grid_size == 0), (pos % params.grid_size == params.grid_size - 1)
@@ -144,8 +144,9 @@ class GridWorld(environment.Environment):
              + (action == 1) * (1 - bottom_row) * params.grid_size \
              + (action == 2) * (1 - left_column) * -1 \
              + (action == 3) * (1 - right_column) * 1
-        next_pos = pos + step
+        next_pos = pos + step 
         return jnp.where(params.walls[next_pos], pos, next_pos)
+        # current issue is that params.walls is a 1,100 vector, but state.obj_pos is 1,5
 
     def reset_env(
         self, key: chex.PRNGKey, params: EnvParams

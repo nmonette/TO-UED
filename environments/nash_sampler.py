@@ -1,33 +1,20 @@
-from typing import List
 
-import chex
 import jax
 import jax.numpy as jnp
 
 from jax import random
-from jax.tree_util import tree_map
-
-from jaxopt.projection import projection_simplex
 
 from flax import struct
-from functools import partial
-from typing import Callable
 
 from util import *
-from environments.environments import get_env, reset_env_params, get_env_spec
 from environments.level_sampler import LevelSampler, LevelBuffer
-from environments.rollout import RolloutWrapper
-from agents.agents import (
-    create_agent,
-    create_value_critic,
-    eval_agent,
-    AgentHyperparams,
-)
-from agents.a2c import train_a2c_agent, A2CHyperparams
-from agents.agents import eval_agent, compute_advantage
-from meta.meta import create_lpg_train_state, make_lpg_train_step
+from environments.environments import reset_env_params
+
+from agents.agents import create_value_critic
+from agents.agents import compute_advantage
 from agents.lpg_agent import train_lpg_agent
 
+from meta.meta import create_lpg_train_state, make_lpg_train_step
 
 # TODO: Reimplement positive_value_loss and l1_value_loss
 SCORE_FUNCTIONS = ["random", "frozen", "alg_regret"]
@@ -39,7 +26,7 @@ class Game:
     x: int
     y: int
 
-    def get_grads(self, x=False, y=False):
+    def grad(self, x=False, y=False):
         if x:
             return jnp.dot(self.game,  self.y)
         elif y:
@@ -47,7 +34,7 @@ class Game:
         # else:
         #     return self.x.T @ self.game @ self.y
 
-def get_nash(game: Game, num_iters = 1000):
+def get_nash(game: Game, x_nz, y_nz, num_iters = 10000):
     x_strats = jnp.empty((num_iters + 1, game.x.shape[0])).at[0].set(game.x)
     y_strats = jnp.empty((num_iters + 1, game.y.shape[0])).at[0].set(game.y)
 
@@ -55,10 +42,10 @@ def get_nash(game: Game, num_iters = 1000):
         x_strats, y_strats, game = carry
 
         x_grad = game.grad(x=True)
-        x = projection_simplex(x_strats[t-1] - 0.01 * x_grad)
+        x = projection_simplex(game.x - 0.01 * x_grad, x_nz)
 
         y_grad = game.grad(y=True)
-        y = projection_simplex(y_strats[t-1] - 0.01 * y_grad)
+        y = projection_simplex(game.y - 0.01 * y_grad, y_nz)
 
         game = game.replace(x=x, y=y)
         
@@ -79,7 +66,8 @@ class NashSampler(LevelSampler):
         """Creates a new level buffer, if used by the score function."""
         rng = jax.random.split(rng, self.buffer_size)
         random_params, random_lifetimes = self._sample_env_params(rng)
-        return LevelBuffer.create_buffer(random_params, random_lifetimes).at[0].replace(active=True)
+        buffer = LevelBuffer.create_buffer(random_params, random_lifetimes)
+        return buffer.replace(active=buffer.active.at[0].set(True))
     
     def initialize_buffers(self, rng):
         rng, train_rng, eval_rng = jax.random.split(rng, 3)
@@ -90,14 +78,15 @@ class NashSampler(LevelSampler):
     
     def _train_agent(self, rng, level, agent_state, value_critic_state, lpg_train_state, agent_train_fn):
         """Perform K agent train steps then evaluate an agent."""
+        rng, train_rng, rollout_rng = jax.random.split(rng, 3)
+
         # --- Perform K agent train steps ---
-        rng, _rng = jax.random.split(rng)
-        agent_state, agent_metrics = agent_train_fn(_rng, lpg_train_state, agent_state)
+        agent_state, agent_metrics = agent_train_fn(train_rng, lpg_train_state, agent_state)
 
         # --- Rollout updated agent ---
         rng, _rng = jax.random.split(rng)
         eval_rollouts, env_obs, env_state, _ = self.rollout_manager.batch_rollout(
-            _rng,
+            rollout_rng,
             agent_state.actor_state,
             agent_state.level.env_params,
             agent_state.env_obs,
@@ -123,22 +112,22 @@ class NashSampler(LevelSampler):
     
         return agent_state, value_critic_state
     
-    def _train_lpg(self, rng, train_level):
-        # --- Initialize LPG and training loop ---
-        rng, lpg_rng = jax.random.split(rng)
-        train_state = create_lpg_train_state(lpg_rng, self.args)
-        lpg_train_step_fn = make_lpg_train_step(self.args, self.rollout_manager, single_env=True)
-
-        temp_buffer = LevelBuffer(train_level, 0, True, True)
+    def _train_lpg(self, rng, train_level, train_state):
+        # ---  LPG  training loop ---
+        lpg_train_step_fn = make_lpg_train_step(self.args, self.rollout_manager)
 
         # --- Initialize agent and value critic for training level ---
-        ## there may be an issue that the _create_agent and create_value_critic are a single object instead of an array but we'll see
         rng, agent_rng, value_rng = random.split(rng, 3)
-        agent_states = self._create_agent(agent_rng, train_level)
-        value_critics = create_value_critic(value_rng, self.agent_hypers, self.obs_shape)
+        agent_rng = random.split(agent_rng, self.args.num_agents)
+        agent_states = jax.vmap(self._create_agent, in_axes=(0, None))(agent_rng, train_level)
+        
+        value_critic_states = None
+        if not self.args.use_es:
+            value_rng = random.split(value_rng, self.args.num_agents)
+            value_critic_states = jax.vmap(create_value_critic, in_axes=(0, None, None))(value_rng, self.agent_hypers, self.obs_shape)
 
         def _meta_train_loop(carry, _):
-            rng, train_state, agent_states, value_critic_states, level_buffer = carry
+            rng, train_state, agent_states, value_critic_states = carry
 
             # --- Update LPG ---
             rng, _rng = jax.random.split(rng)
@@ -148,85 +137,89 @@ class NashSampler(LevelSampler):
                 agent_states=agent_states,
                 value_critic_states=value_critic_states,
             )
-            carry = (rng, train_state, agent_states, value_critic_states, level_buffer)
+            carry = (rng, train_state, agent_states, value_critic_states)
             return carry, metrics
 
-        carry = (rng, train_state, agent_states, value_critic_states, level_buffer)
+        carry = (rng, train_state, agent_states, value_critic_states)
         carry, metrics = jax.lax.scan(
             _meta_train_loop, carry, None, length=self.args.train_steps
         )
-        rng, train_state, agent_states, value_critic_states, level_buffer = carry
+        rng, train_state, agent_states, value_critic_states = carry
 
         return train_state
     
-    def _compute_algorithmic_regret(self, rng, train_level, eval_level, train_state=None):
-        if train_level.active == False or eval_level.active == False:
-            return None
-
-        # --- Train LPG on train_level unless LPG is already provided ---
-        if train_state is None:
-            train_state = self._train_lpg(rng, train_level)
-
-        # --- Train an on the eval environment using the new LPG ---
-
-        ## --- Initialize agent and value critic for eval level ---
-        rng, agent_rng, value_rng = random.split(rng, 3)
-        agent_states = self._create_agent(agent_rng, eval_level)
-        value_critics = create_value_critic(value_rng, self.agent_hypers, self.obs_shape)
-
-        ## --- Train the agent ---
-        agent_train_fn = partial(
-            train_lpg_agent,
-            rollout_manager=self.rollout_manager,
-            num_train_steps=self.lpg_hypers.num_agent_updates,
-            agent_target_coeff=self.lpg_hypers.agent_target_coeff,
-        )
-        rng, train_rng = jax.random.split(rng)
-        agent_state, value_critic = self._train_agent(train_rng, eval_level, agent_states, value_critics, train_state, agent_train_fn)
+    def _compute_algorithmic_regret(self, rng, train_level, eval_level, train_state=None, train_active=True, eval_active=True):
+        def zero(*args):
+            return 0.
         
-        return super()._compute_algorithmic_regret(rng, agent_state)
+        def other(rng, train_level, eval_level, train_state, train_active, eval_active):
+            # --- Train LPG on train_level unless train_level is not provided ---
+            if train_level is not None:
+                train_state = self._train_lpg(rng, train_level, train_state)
 
-    def get_payoff_matrix(self, rng, train_buffer, eval_buffer):
+            # --- Train an agent on the eval environment using the new LPG ---
+
+            ## --- Initialize agent for eval level ---
+            rng, agent_rng, value_rng = random.split(rng, 3)
+            agent_states = self._create_agent(agent_rng, eval_level)
+            
+            ## --- Train the agent --- 
+            rng, train_rng = jax.random.split(rng)
+            agent_state, _ = train_lpg_agent(train_rng, train_state.train_state, agent_states, self.rollout_manager, self.lpg_hypers.num_agent_updates, self.lpg_hypers.agent_target_coeff) 
+            return super(NashSampler, self)._compute_algorithmic_regret(rng, agent_state)
+        
+
+        return jax.lax.cond(jnp.logical_and(train_active, eval_active), other, zero, rng, train_level, eval_level, train_state, train_active, eval_active)     
+
+    def get_payoff_matrix(self, rng, train_state, train_buffer, eval_buffer):
         # --- Train agents on each level in train buffer ---
-        rng, *train_rng = jax.random.split(rng, jnp.sum(train_buffer.active.astype(int)) + 1)
-        train_states = jax.vmap(self._train_lpg)(train_rng, train_buffer.level)
+        rng, *train_rng = jax.random.split(rng, self.buffer_size + 1)
+        
+        train_rng = jnp.array(train_rng)
+        train_states = jax.vmap(self._train_lpg, in_axes=(0, 0, None,))(train_rng, train_buffer.level, train_state)
 
-        rng, *ar_rng = jax.random.split(rng, jnp.sum(train_buffer.active.astype(int)) + 1)
-        ar_fn = jax.vmap(jax.vmap(self._compute_algorithmic_regret, in_axes=(0, 0, None)), in_axes=(None, None, 0))
+        rng, _rng = jax.random.split(rng)
+        _rng = jax.random.split(_rng, (self.buffer_size, self.buffer_size))
 
-        return ar_fn(eval_buffer)(ar_rng, train_buffer.level, eval_buffer.level)
+        ar_fn = jax.vmap(jax.vmap(self._compute_algorithmic_regret, in_axes=(0, 0, None, 0, 0, None)), in_axes=(0, None, 0, None, None, 0))
+        return ar_fn(_rng, train_buffer.level, eval_buffer.level, train_states, train_buffer.active, eval_buffer.active)
     
-    def compute_nash(self, rng, train_buffer, eval_buffer):
+    def compute_nash(self, rng, train_state, train_buffer, eval_buffer):
         # --- Calculate Payoff Matrix ---
-        matrix = self.get_payoff_matrix(rng, train_buffer, eval_buffer)
+        matrix = self.get_payoff_matrix(rng, train_state, train_buffer, eval_buffer)
         
         rng, _rng = jax.random.split(rng)
         # --- Initialize random strategies ---
         strats = jax.nn.softmax(jax.random.uniform(_rng, (2, matrix.shape[0])), axis=1)
         # -- Calculate nash ---
         game = Game(matrix, strats[0], strats[1])
-        return get_nash(game) # x,y = get_nash(game)
+        x,y = get_nash(game, jnp.sum(train_buffer.active), jnp.sum(eval_buffer.active))
 
-        # return jnp.pad(x, (0, self.buffer_size - len(x))), jnp.pad(y, (0, self.buffer_size - len(y)))
+        return x, y
     
-    def get_training_levels(self, rng, train_buffer, train_nash_dist):
+    def get_training_levels(self, rng, train_buffer, train_nash, num_agents=None, create_value_critic=True):
+        if num_agents is None:
+            num_agents = self.args.num_agents
+        
+        # --- Sample levels ---
         rng, _rng = jax.random.split(rng)
-        envs = jax.random.categorical(_rng, jnp.nan_to_num(jnp.log(train_nash_dist)), shape=(self.args.buffer_size, ))
+        idx = jax.random.choice(_rng, jnp.arange(0, train_nash.shape[0]), (num_agents, ), True, train_nash)
+        envs = jax.tree_map(lambda x:  x[idx], train_buffer.level)
 
-        rng, *_rng = jax.random.split(rng, self.args.buffer_size + 1)
-        return jax.vmap(self._create_agent)(_rng, train_buffer.level[envs], not self.args.use_es)
+        # --- Get agent states from levels ---
+        rng, agent_rng, value_rng = jax.random.split(rng, 3)
+        agent_rng = jax.random.split(agent_rng, num_agents)
+        agent_states = jax.vmap(self._create_agent, in_axes=(0, 0, None))(agent_rng, envs, not self.args.use_es)
 
-    def _get_level(self, rng):
-        """
-        Sample an environment. 
-        TODO: Add in an environment generator
-        """
-        # --- Sample a level ---
-        rng, _rng = jax.random.split(rng)
-        level, agent_state, value_critic_state = self.initial_sample(rng, not self.args.use_es)
-        return level.replace(active=True)
+        value_critics = None
+        if create_value_critic:
+            value_rng = jax.random.split(value_rng, self.args.buffer_size)
+            value_critics = jax.vmap(create_value_critic, in_axes=(0, None, None))(
+                value_rng, self.agent_hypers, self.obs_shape
+            )
+        return agent_states, value_critics
 
-    def get_train_br(self, rng, eval_nash, eval_buffer):
+    def get_train_br(self, rng, train_state, eval_nash, eval_buffer):
         """
         Sample a level, then collect the convex combination of 
         algorithmic regrets over the nash of evaluative 
@@ -236,64 +229,74 @@ class NashSampler(LevelSampler):
         environment. If choosing to use a generator, 
         use the -regret as a reward for the generator.
         """
-        rng, *_rng = jax.random.split(rng, self.args.br + 1)
+        rng = jax.random.split(rng, self.args.br)
 
         def _br_loop(rng):
-            # --- Sample a level and train an LPG on it ---
-            train_level = self._get_level(rng)
+            # --- Sample a level to train a LPG on ---
+            rng, _rng = jax.random.split(rng)
+            params, lifetime = reset_env_params(_rng, self.env_name, self.env_mode)
+            train_level = Level(params, lifetime, 0)
 
-            # --- Collect Evaluative Regrets ---
-            rng, *_rng = jax.random.split(rng, jnp.sum(eval_buffer.active.astype(int)) + 1)
-            regrets = jax.vmap(partial(self._compute_algorithmic_regret, train_level=train_level))(rng=_rng, eval_level=eval_buffer.level)
+            # --- Compute Regrets --- 
+            regrets = jax.vmap(self._compute_algorithmic_regret, in_axes=(None, None, 0, None, None, 0))(rng, train_level, eval_buffer.level, train_state, True, eval_buffer.active)
 
+            # --- Return expected regret over the nash ---
             return train_level, jnp.dot(eval_nash, regrets)
         
-        levels, regrets = jax.vmap(_br_loop)(_rng)
+        levels, regrets = jax.vmap(_br_loop)(rng)
         
-        return levels[jnp.argmin(regrets)].replace(active=True)
+        idx = jnp.argmin(regrets)
+        level = jax.tree_map(lambda x: x[idx], levels)
+        return level
     
-    def get_eval_br(self, rng, train_nash, train_buffer):
+    def get_eval_br(self, rng, train_state):
         """
-        First, train an LPG on the training nash. Then, 
+        Take the trained LPG on the training nash. Then, 
         repeatedly sample envs and evaluate regret on them.
-        We will use super()._compute_algorithmic_regret here.
         """
-        # --- Initialize agent states ---
-        rng, _rng = jax.random.split(rng)
-        agent_states = self.get_training_levels(_rng, train_buffer, train_nash)
-        ## we won't create a value_critic here because we will use ES.
-
-        lpg_train_step_fn = make_lpg_train_step(self.args, self.rollout_manager, single_env=True)
-
-        def _meta_train_loop(carry, _):
-            rng, train_state, agent_states, value_critic_states, level_buffer = carry
-
-            # --- Update LPG ---
-            rng, _rng = jax.random.split(rng)
-            train_state, agent_states, value_critic_states, metrics = lpg_train_step_fn(
-                rng=_rng,
-                lpg_train_state=train_state,
-                agent_states=agent_states,
-                value_critic_states=value_critic_states,
-            )
-            carry = (rng, train_state, agent_states, value_critic_states, level_buffer)
-            return carry, metrics
-
-        carry = (rng, train_state, agent_states, None, level_buffer)
-        carry, metrics = jax.lax.scan(
-            _meta_train_loop, carry, None, length=self.args.train_steps
-        )
-        rng, train_state, agent_states, _, level_buffer = carry
-
         def _br_loop(rng):
             # --- Sample a level ---
-            eval_level = self._get_level(rng)
+            rng, _rng = jax.random.split(rng)
+            params, lifetime = reset_env_params(_rng, self.env_name, self.env_mode)
+            eval_level = Level(params, lifetime, 0)
 
             # --- Collect Evaluative Regrets ---
             rng, _rng = jax.random.split(rng)
-            return eval_level, self._compute_algorithmic_regret(_rng, None, eval_level, train_state)
+            return eval_level, self._compute_algorithmic_regret(_rng, None, eval_level, train_state, True, True)
         
-        levels, regrets = jax.vmap(_br_loop)(_rng)
+        rng = jax.random.split(rng, self.args.br)
+        levels, regrets = jax.vmap(_br_loop)(rng)
         
-        return levels[jnp.argmax(regrets)].replace(active=True)
+        idx = jnp.argmax(regrets)
+        level = jax.tree_map(lambda x: x[idx], levels)
+
+        return level
     
+    def sample(self, rng, train_buffer, train_nash, old_agents, old_value_critics):
+        # --- Check which agents' lifetimes are finished ---
+        terminated_mask = old_agents.actor_state.step >= old_agents.level.lifetime
+        term_mask_fn = lambda term_val, active_val: jax.vmap(jnp.where)(
+            terminated_mask, term_val, active_val
+        )
+
+        # --- Sample new agents/value critics ---
+        rng, _rng = jax.random.split(rng)
+        agent_states, new_value_critics = self.get_training_levels(_rng, train_buffer, train_nash, terminated_mask.shape[0], not self.args.use_es)
+    
+        # --- Function mismatch fix trick ---
+        agent_states = agent_states.replace(
+            critic_state=agent_states.critic_state.replace(
+                tx=old_agents.critic_state.tx, apply_fn=old_agents.critic_state.apply_fn
+            ),
+            actor_state=agent_states.actor_state.replace(
+                tx=old_agents.actor_state.tx, apply_fn=old_agents.actor_state.apply_fn
+            ),
+        )
+        if new_value_critics is not None:
+            new_value_critics = new_value_critics.replace(
+                tx=old_value_critics.tx, apply_fn=old_value_critics.apply_fn
+            )
+        
+        agent_states = jax.tree_map(term_mask_fn, agent_states, old_agents)
+        value_critics = jax.tree_map(term_mask_fn, new_value_critics, old_value_critics)
+        return agent_states, value_critics
