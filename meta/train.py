@@ -99,7 +99,7 @@ def lpg_meta_grad_train_step(
     )(rng, agent_states, value_critic_states)
 
     # --- Accumulate gradients and update LPG ---
-    lpg_grad, metrics = jax.tree_map(jnp.mean, (lpg_grad, metrics))
+    lpg_grad, metrics = jax.tree_util.tree_map(jnp.mean, (lpg_grad, metrics))
     lpg_train_state = lpg_train_state.apply_gradients(grads=lpg_grad)
     return lpg_train_state, agent_states, value_critic_states, metrics
 
@@ -129,7 +129,7 @@ def lpg_es_train_step(
             for i in range(lpg_train_state.strategy.popsize // 2)
         ]
     )
-    candidate_params = jax.tree_map(lambda x: x[idxs], candidate_params)
+    candidate_params = jax.tree_util.tree_map(lambda x: x[idxs], candidate_params)
 
     agent_train_fn = partial(
         train_lpg_agent,
@@ -164,7 +164,7 @@ def lpg_es_train_step(
         return agent_state, candidate_fitness, metrics
 
     # --- Evaluate LPG candidates ---
-    repeated_agent_states = jax.tree_map(
+    repeated_agent_states = jax.tree_util.tree_map(
         lambda x: jnp.repeat(x, 2, axis=0), agent_states
     )
     rng, _rng = jax.random.split(rng)
@@ -179,7 +179,7 @@ def lpg_es_train_step(
     rank_fitness = rank_fitness.at[::2].set(first_greater.astype(float))
     rank_fitness = rank_fitness.at[1::2].set(1.0 - first_greater.astype(float))
     # Return agent from each antithetic pair with higher fitness
-    agent_states = jax.tree_map(
+    agent_states = jax.tree_util.tree_map(
         lambda x: jax.vmap(jnp.where)(first_greater, x[::2], x[1::2]),
         repeated_agent_states,
     )
@@ -196,6 +196,6 @@ def lpg_es_train_step(
             "min": jnp.max(fitness),
             "var": jnp.var(fitness),
         },
-        "lpg_agent": jax.tree_map(jnp.mean, agent_metrics.as_dict()),
+        "lpg_agent": jax.tree_util.tree_map(jnp.mean, agent_metrics.as_dict()),
     }
     return lpg_train_state, agent_states, None, metrics

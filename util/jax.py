@@ -1,6 +1,6 @@
 import jax
-from jax.config import config as jax_config
-
+# from jax.config import config as jax_config
+jax_config = jax.config
 
 def jax_debug_wrapper(args, f):
     def wrapped_fn(*x):
@@ -32,10 +32,10 @@ def mini_batch_vmap(f, num_mini_batches):
         def batched_fn(_, x):
             return None, jax.vmap(f)(*x)
 
-        mini_batched_args = jax.tree_map(
+        mini_batched_args = jax.tree_util.tree_map(
             lambda x: x.reshape((num_mini_batches, -1, *x.shape[1:])), args
         )
         _, ret = jax.lax.scan(batched_fn, None, mini_batched_args)
-        return jax.tree_map(lambda x: x.reshape((-1, *x.shape[2:])), ret)
+        return jax.tree_util.tree_map(lambda x: x.reshape((-1, *x.shape[2:])), ret)
 
     return mapped_fn

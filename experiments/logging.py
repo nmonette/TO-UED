@@ -25,7 +25,7 @@ def init_logger(args):
 def log_results(args, metrics, train_state, level_buffer):
     # Log metrics
     for step in range(args.train_steps):
-        wandb.log(jax.tree_map(lambda x: x[step], metrics))
+        wandb.log(jax.tree_util.tree_map(lambda x: x[step], metrics))
 
     # Log checkpoints
     ckpt_path = checkpoints.save_checkpoint(

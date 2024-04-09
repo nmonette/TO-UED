@@ -123,24 +123,24 @@ def make_train(args):
             agent_states, value_critic_states = level_sampler.sample(
                 _rng, train_buffer, train_nash, agent_states, value_critic_states
             )
-
             """
             # --- Get best response levels ---
             rng, train_rng, eval_rng, nash_rng = jax.random.split(rng, 4)
             new_train = level_sampler.get_train_br(train_rng, train_state, eval_nash, eval_buffer)
-            new_eval = level_sampler.get_eval_br(eval_rng, train_state)
+            new_eval, eval_regret = level_sampler.get_eval_br(eval_rng, train_state)
 
             reset_fn = lambda x,y: x.at[t].set(y)
-            train_buffer = train_buffer.replace(level=jax.tree_map(reset_fn, train_buffer.level, new_train), active=train_buffer.active.at[t].set(True))
+            train_buffer = train_buffer.replace(level=jax.tree_util.tree_map(reset_fn, train_buffer.level, new_train), active=train_buffer.active.at[t].set(True))
             
-            eval_buffer = eval_buffer.replace(level=jax.tree_map(reset_fn, eval_buffer.level, new_eval), active=eval_buffer.active.at[t].set(True))
+            eval_buffer = eval_buffer.replace(level=jax.tree_util.tree_map(reset_fn, eval_buffer.level, new_eval), active=eval_buffer.active.at[t].set(True))
 
             train_nash, eval_nash, game = level_sampler.compute_nash(nash_rng, train_state, train_buffer, eval_buffer)
 
             metrics["GT"] = {
                 "train_nash": train_nash,
                 "eval_nash": eval_nash,
-                "game": game
+                "game": game,
+                "eval_regret": eval_regret
             }
 
             return (rng, train_state, train_buffer, eval_buffer, train_nash, eval_nash), metrics

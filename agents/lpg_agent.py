@@ -75,12 +75,12 @@ def lpg_agent_train_step(
     updated_critic_state = critic_state.apply_gradients(grads=critic_grads)
 
     # --- Discard update if agent has finished training ---
-    actor_state, critic_state = jax.tree_map(
+    actor_state, critic_state = jax.tree_util.tree_map(
         lambda new, old: jnp.where(updated_actor_state.step <= lifetime, new, old),
         (updated_actor_state, updated_critic_state),
         (actor_state, critic_state),
     )
-    metrics = jax.tree_map(jnp.mean, metrics)
+    metrics = jax.tree_util.tree_map(jnp.mean, metrics)
     critic_loss, pi_l2, y_l2 = metrics
     return actor_state, critic_state, critic_loss, pi_l2, y_l2
 
@@ -137,4 +137,4 @@ def train_lpg_agent(
         length=num_train_steps,
     )
     _, agent_state = carry_out
-    return agent_state, jax.tree_map(jnp.mean, metrics)
+    return agent_state, jax.tree_util.tree_map(jnp.mean, metrics)

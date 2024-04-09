@@ -68,7 +68,7 @@ def a2c_agent_train_step(
     updated_actor_state = actor_state.apply_gradients(grads=actor_grads)
 
     # --- Discard update if agent has finished training ---
-    actor_state, critic_state = jax.tree_map(
+    actor_state, critic_state = jax.tree_util.tree_map(
         lambda new, old: jnp.where(updated_actor_state.step <= lifetime, new, old),
         (updated_actor_state, updated_critic_state),
         (actor_state, critic_state),
@@ -122,4 +122,4 @@ def train_a2c_agent(
         length=num_train_steps,
     )
     _, agent_state = carry_out
-    return agent_state, jax.tree_map(jnp.mean, metrics)
+    return agent_state, jax.tree_util.tree_map(jnp.mean, metrics)

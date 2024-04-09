@@ -113,7 +113,7 @@ class LevelSampler:
             rng, _rng = jax.random.split(rng)
             levels = self._sample_random_levels(_rng, batch_size)
         else:
-            levels = jax.tree_map(lambda x: x[:batch_size], level_buffer.level)
+            levels = jax.tree_util.tree_map(lambda x: x[:batch_size], level_buffer.level)
             level_buffer = level_buffer.replace(
                 active=jnp.arange(self.buffer_size) < batch_size
             )
@@ -150,7 +150,7 @@ class LevelSampler:
             # --- Sample random levels ---
             rng, _rng = jax.random.split(rng)
             new_levels = self._sample_random_levels(_rng, batch_size)
-            new_levels = jax.tree_map(term_mask_fn, new_levels, old_agents.level)
+            new_levels = jax.tree_util.tree_map(term_mask_fn, new_levels, old_agents.level)
 
         elif self.score_function == "frozen":
             # --- Randomly sample from frozen buffer ---
@@ -163,8 +163,8 @@ class LevelSampler:
                 shape=(batch_size,),
                 replace=True,
             )
-            new_levels = jax.tree_map(lambda x: x[level_ids], level_buffer.level)
-            new_levels = jax.tree_map(term_mask_fn, new_levels, old_agents.level)
+            new_levels = jax.tree_util.tree_map(lambda x: x[level_ids], level_buffer.level)
+            new_levels = jax.tree_util.tree_map(term_mask_fn, new_levels, old_agents.level)
 
         else:
             # --- Reset buffer levels ---
@@ -224,9 +224,9 @@ class LevelSampler:
             use_replay = random.permutation(_rng, use_replay)
             select_fn = lambda x, y: jax.vmap(jnp.where)(use_replay, x, y)
             # Select new levels from replay or random sets
-            new_levels = jax.tree_map(select_fn, replay_levels, random_levels)
+            new_levels = jax.tree_util.tree_map(select_fn, replay_levels, random_levels)
             # Use old levels for non-termianted agents
-            new_levels = jax.tree_map(term_mask_fn, new_levels, old_agents.level)
+            new_levels = jax.tree_util.tree_map(term_mask_fn, new_levels, old_agents.level)
 
             # --- Update active status of new levels in buffer ---
             level_buffer = level_buffer.replace(
@@ -261,8 +261,8 @@ class LevelSampler:
             new_value_critics = new_value_critics.replace(
                 tx=old_value_critics.tx, apply_fn=old_value_critics.apply_fn
             )
-        agent_states = jax.tree_map(term_mask_fn, agent_states, old_agents)
-        value_critics = jax.tree_map(term_mask_fn, new_value_critics, old_value_critics)
+        agent_states = jax.tree_util.tree_map(term_mask_fn, agent_states, old_agents)
+        value_critics = jax.tree_util.tree_map(term_mask_fn, new_value_critics, old_value_critics)
         return level_buffer, agent_states, value_critics
 
     def _sample_random_levels(self, rng: chex.PRNGKey, batch_size: int):
@@ -387,7 +387,7 @@ class LevelSampler:
             raise NotImplementedError(
                 f"Level score transform {self.score_transform} is not implemented."
             )
-        return jax.tree_map(lambda x: x[level_ids], level_buffer.level)
+        return jax.tree_util.tree_map(lambda x: x[level_ids], level_buffer.level)
 
     def _sample_random_from_buffer(
         self, rng: chex.PRNGKey, level_buffer: LevelBuffer, batch_size: int
@@ -405,7 +405,7 @@ class LevelSampler:
             shape=(batch_size,),
             replace=False,
         )
-        return jax.tree_map(lambda x: x[level_ids], level_buffer.level)
+        return jax.tree_util.tree_map(lambda x: x[level_ids], level_buffer.level)
 
     @property
     def num_actions(self):

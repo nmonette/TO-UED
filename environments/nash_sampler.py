@@ -187,19 +187,16 @@ class NashSampler(LevelSampler):
     def compute_nash(self, rng, train_state, train_buffer, eval_buffer):
         # --- Calculate Payoff Matrix ---
         matrix = self.get_payoff_matrix(rng, train_state, train_buffer, eval_buffer)
-        print("matrix:", matrix.shape)
         rng, _rng = jax.random.split(rng)
         # --- Initialize random strategies ---
         nz = jnp.sum(train_buffer.active)
         strats = jnp.where(jnp.arange(0, matrix.shape[0]) < nz, jax.random.uniform(_rng, (2, matrix.shape[0])), 0)
         x = projection_simplex(strats[0], nz)
         y = projection_simplex(strats[1], nz)
-        print("strats:", strats.shape)
         # -- Calculate nash ---
         game = Game(matrix, x, y)
         x,y = get_nash(game, jnp.sum(train_buffer.active), jnp.sum(eval_buffer.active))
 
-        print("x:", x.shape)
         return x, y, matrix
     
     def get_training_levels(self, rng, train_buffer, train_nash, num_agents=None, create_value_critic=True):
@@ -209,7 +206,7 @@ class NashSampler(LevelSampler):
         # --- Sample levels ---
         rng, _rng = jax.random.split(rng)
         idx = jax.random.choice(_rng, jnp.arange(0, train_nash.shape[0]), (num_agents, ), True, train_nash)
-        envs = jax.tree_map(lambda x:  x[idx], train_buffer.level)
+        envs = jax.tree_util.tree_map(lambda x:  x[idx], train_buffer.level)
 
         # --- Get agent states from levels ---
         rng, agent_rng, value_rng = jax.random.split(rng, 3)
@@ -247,10 +244,10 @@ class NashSampler(LevelSampler):
             return train_level, jnp.dot(eval_nash, regrets)
         
         rng = jax.random.split(rng, self.args.br)
-        levels, regrets = jax.vmap(_br_loop)(rng)
+        levels, regrets = mini_batch_vmap(_br_loop, self.args.num_mini_batches)(rng)
         
         idx = jnp.argmin(regrets)
-        level = jax.tree_map(lambda x: x[idx], levels)
+        level = jax.tree_util.tree_map(lambda x: x[idx], levels)
         return level
     
     def get_eval_br(self, rng, train_state):
@@ -269,12 +266,12 @@ class NashSampler(LevelSampler):
             return eval_level, self._compute_algorithmic_regret(_rng, None, eval_level, train_state, True, True)
         
         rng = jax.random.split(rng, self.args.br)
-        levels, regrets = jax.vmap(_br_loop)(rng)
+        levels, regrets = mini_batch_vmap(_br_loop, self.args.num_mini_batches)(rng)
 
         idx = jnp.argmax(regrets)
-        level = jax.tree_map(lambda x: x[idx], levels)
+        level = jax.tree_util.tree_map(lambda x: x[idx], levels)
 
-        return level
+        return level, regrets[idx]
     
     def sample(self, rng, train_buffer, train_nash, old_agents, old_value_critics):
         # --- Check which agents' lifetimes are finished ---
@@ -282,7 +279,7 @@ class NashSampler(LevelSampler):
         term_mask_fn = lambda term_val, active_val: jax.vmap(jnp.where)(
             terminated_mask, term_val, active_val
         )
-
+        mini_batch_vmap()
         # --- Sample new agents/value critics ---
         rng, _rng = jax.random.split(rng)
         agent_states, new_value_critics = self.get_training_levels(_rng, train_buffer, train_nash, terminated_mask.shape[0], not self.args.use_es)
@@ -301,6 +298,6 @@ class NashSampler(LevelSampler):
                 tx=old_value_critics.tx, apply_fn=old_value_critics.apply_fn
             )
         
-        agent_states = jax.tree_map(term_mask_fn, agent_states, old_agents)
-        value_critics = jax.tree_map(term_mask_fn, new_value_critics, old_value_critics)
+        agent_states = jax.tree_util.tree_map(term_mask_fn, agent_states, old_agents)
+        value_critics = jax.tree_util.tree_map(term_mask_fn, new_value_critics, old_value_critics)
         return agent_states, value_critics
