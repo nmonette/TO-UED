@@ -93,9 +93,7 @@ def make_train(args):
         level_sampler = NashSampler(args)
         rng, buffer_rng, train_rng = jax.random.split(rng, 3)
         train_buffer, eval_buffer = level_sampler.initialize_buffers(buffer_rng)
-        train_state = create_lpg_train_state(train_rng, args)
-
-        rng, train_rng, eval_rng = jax.random.split(rng, 3)
+        train_state = create_lpg_train_state(train_rng, args)        
     
         # --- TRAIN LOOP ---
         lpg_train_step_fn = make_lpg_train_step(args, level_sampler.rollout_manager)
@@ -137,7 +135,13 @@ def make_train(args):
             
             eval_buffer = eval_buffer.replace(level=jax.tree_map(reset_fn, eval_buffer.level, new_eval), active=eval_buffer.active.at[t].set(True))
 
-            train_nash, eval_nash = level_sampler.compute_nash(nash_rng, train_state, train_buffer, eval_buffer)
+            train_nash, eval_nash, game = level_sampler.compute_nash(nash_rng, train_state, train_buffer, eval_buffer)
+
+            metrics["GT"] = {
+                "train_nash": train_nash,
+                "eval_nash": eval_nash,
+                "game": game
+            }
 
             return (rng, train_state, train_buffer, eval_buffer, train_nash, eval_nash), metrics
         
@@ -168,6 +172,6 @@ def main(cmd_args=sys.argv[1:]):
     return experiment_fn(args)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     install()
-    main("--num_agents 2 --num_mini_batches 2 --buffer_size 3 --use_es --lifetime_conditioning".split(" "))
+    main() # "--num_agents 2 -br 10 --num_mini_batches 2 --buffer_size 3 --use_es --lifetime_conditioning".split(" ")

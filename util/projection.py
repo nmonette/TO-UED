@@ -16,17 +16,17 @@ def projection_simplex(
     # max_nz = 2
 
     max_nz_indices = jnp.nonzero(x, size=x.shape[0], fill_value=0)
-    max_nz_values = jnp.where(jnp.arange(0, x.shape[0]) <= max_nz, x, 0)
+    max_nz_values = jnp.where(jnp.arange(0, x.shape[0]) < max_nz, x, 0)
 
     # Projection the sorted top k values onto the unit simplex
     cumsum_max_nz_values = jnp.cumsum(max_nz_values)
-    cumsum_max_nz_values = jnp.where(jnp.arange(0, x.shape[0]) <= max_nz, cumsum_max_nz_values, 0)
+    cumsum_max_nz_values = jnp.where(jnp.arange(0, x.shape[0]) < max_nz, cumsum_max_nz_values, 0)
     ind = jnp.arange(x.shape[0])
     cond = (1 / ind + (max_nz_values - cumsum_max_nz_values / ind))
-    cond = jnp.where(jnp.arange(0, x.shape[0]) <= max_nz, cond, 0)
+    cond = jnp.where(jnp.arange(0, x.shape[0]) < max_nz, cond, 0)
     idx = jnp.count_nonzero(cond)
     to_relu = 1 / idx + (max_nz_values - cumsum_max_nz_values[idx - 1] / idx)
-    to_relu = jnp.where(jnp.arange(0, x.shape[0]) <= max_nz, to_relu, 0)
+    to_relu = jnp.where(jnp.arange(0, x.shape[0]) < max_nz, to_relu, 0)
     max_nz_simplex_projection = jax.nn.relu(
         to_relu)
     

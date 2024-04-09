@@ -52,7 +52,7 @@ def make_train(args):
         # --- Stack and return metrics ---
         carry = (rng, train_state, agent_states, value_critic_states, level_buffer)
         carry, metrics = jax.lax.scan(
-            _meta_train_loop, carry, None, length=args.train_steps
+            _meta_train_loop, carry, None, length=2 # args.train_steps
         )
         return metrics, train_state, level_buffer
 
@@ -79,4 +79,4 @@ def main(cmd_args=sys.argv[1:]):
 
 if __name__ == "__main__":
     install()
-    main(main("--num_agents 32 --debug --buffer_size 16 --num_mini_batches 8 --use_es --lifetime_conditioning".split(" ")))
+    main("--num_agents 2 --num_mini_batches 2 --buffer_size 3 --use_es --lifetime_conditioning".split(" "))

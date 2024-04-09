@@ -181,21 +181,26 @@ class NashSampler(LevelSampler):
         rng, _rng = jax.random.split(rng)
         _rng = jax.random.split(_rng, (self.buffer_size, self.buffer_size))
 
-        ar_fn = jax.vmap(jax.vmap(self._compute_algorithmic_regret, in_axes=(0, 0, None, 0, 0, None)), in_axes=(0, None, 0, None, None, 0))
+        ar_fn = jax.vmap(jax.vmap(self._compute_algorithmic_regret, in_axes=(0, None, 0, 0, 0, None)), in_axes=(0, 0, None, None, None, 0))
         return ar_fn(_rng, train_buffer.level, eval_buffer.level, train_states, train_buffer.active, eval_buffer.active)
     
     def compute_nash(self, rng, train_state, train_buffer, eval_buffer):
         # --- Calculate Payoff Matrix ---
         matrix = self.get_payoff_matrix(rng, train_state, train_buffer, eval_buffer)
-        
+        print("matrix:", matrix.shape)
         rng, _rng = jax.random.split(rng)
         # --- Initialize random strategies ---
-        strats = jax.nn.softmax(jax.random.uniform(_rng, (2, matrix.shape[0])), axis=1)
+        nz = jnp.sum(train_buffer.active)
+        strats = jnp.where(jnp.arange(0, matrix.shape[0]) < nz, jax.random.uniform(_rng, (2, matrix.shape[0])), 0)
+        x = projection_simplex(strats[0], nz)
+        y = projection_simplex(strats[1], nz)
+        print("strats:", strats.shape)
         # -- Calculate nash ---
-        game = Game(matrix, strats[0], strats[1])
+        game = Game(matrix, x, y)
         x,y = get_nash(game, jnp.sum(train_buffer.active), jnp.sum(eval_buffer.active))
 
-        return x, y
+        print("x:", x.shape)
+        return x, y, matrix
     
     def get_training_levels(self, rng, train_buffer, train_nash, num_agents=None, create_value_critic=True):
         if num_agents is None:
@@ -229,8 +234,6 @@ class NashSampler(LevelSampler):
         environment. If choosing to use a generator, 
         use the -regret as a reward for the generator.
         """
-        rng = jax.random.split(rng, self.args.br)
-
         def _br_loop(rng):
             # --- Sample a level to train a LPG on ---
             rng, _rng = jax.random.split(rng)
@@ -243,6 +246,7 @@ class NashSampler(LevelSampler):
             # --- Return expected regret over the nash ---
             return train_level, jnp.dot(eval_nash, regrets)
         
+        rng = jax.random.split(rng, self.args.br)
         levels, regrets = jax.vmap(_br_loop)(rng)
         
         idx = jnp.argmin(regrets)
@@ -266,7 +270,7 @@ class NashSampler(LevelSampler):
         
         rng = jax.random.split(rng, self.args.br)
         levels, regrets = jax.vmap(_br_loop)(rng)
-        
+
         idx = jnp.argmax(regrets)
         level = jax.tree_map(lambda x: x[idx], levels)
 
