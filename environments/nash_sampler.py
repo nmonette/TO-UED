@@ -279,7 +279,6 @@ class NashSampler(LevelSampler):
         term_mask_fn = lambda term_val, active_val: jax.vmap(jnp.where)(
             terminated_mask, term_val, active_val
         )
-        mini_batch_vmap()
         # --- Sample new agents/value critics ---
         rng, _rng = jax.random.split(rng)
         agent_states, new_value_critics = self.get_training_levels(_rng, train_buffer, train_nash, terminated_mask.shape[0], not self.args.use_es)

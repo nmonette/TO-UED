@@ -137,9 +137,6 @@ def make_train(args):
             train_nash, eval_nash, game = level_sampler.compute_nash(nash_rng, train_state, train_buffer, eval_buffer)
 
             metrics["GT"] = {
-                "train_nash": train_nash,
-                "eval_nash": eval_nash,
-                "game": game,
                 "eval_regret": eval_regret
             }
 
