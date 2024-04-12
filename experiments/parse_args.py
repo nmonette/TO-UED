@@ -48,7 +48,7 @@ def parse_args(cmd_args=sys.argv[1:]):
     parser.add_argument(
         "-br",
         "--best-response-length",
-        help="Number of best response iterates",
+        help="Number of best response iterates, must be multiple of 20",
         dest="br", 
         default=10, 
         type=int

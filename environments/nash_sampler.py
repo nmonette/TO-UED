@@ -30,7 +30,7 @@ class Game:
         if x:
             return jnp.dot(self.game,  self.y)
         elif y:
-            return jnp.dot(self.x.T, self.game)
+            return -jnp.dot(self.x.T, self.game)
         # else:
         #     return self.x.T @ self.game @ self.y
 
@@ -244,7 +244,7 @@ class NashSampler(LevelSampler):
             return train_level, jnp.dot(eval_nash, regrets)
         
         rng = jax.random.split(rng, self.args.br)
-        levels, regrets = mini_batch_vmap(_br_loop, self.args.num_mini_batches)(rng)
+        levels, regrets = mini_batch_vmap(_br_loop, self.args.br // 20)(rng)
         
         idx = jnp.argmin(regrets)
         level = jax.tree_util.tree_map(lambda x: x[idx], levels)
@@ -266,7 +266,7 @@ class NashSampler(LevelSampler):
             return eval_level, self._compute_algorithmic_regret(_rng, None, eval_level, train_state, True, True)
         
         rng = jax.random.split(rng, self.args.br)
-        levels, regrets = mini_batch_vmap(_br_loop, self.args.num_mini_batches)(rng)
+        levels, regrets = mini_batch_vmap(_br_loop, self.args.br // 20)(rng)
 
         idx = jnp.argmax(regrets)
         level = jax.tree_util.tree_map(lambda x: x[idx], levels)
