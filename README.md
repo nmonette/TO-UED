@@ -9,18 +9,6 @@
         <img src="https://img.shields.io/badge/license-Apache2.0-blue.svg" /></a>
 </p>
 
-Some notes for nate: command for running code is as follows:
-```
-train_eg.py --num_agents 32 --num_mini_batches 16 --log --wandb_entity nathanmonette1 --wandb_project gt-ued --train_steps 1.5e4
-```
-
-Also, when done with train_eg.py, run:
-```
-train.py --num_agents 32 --num_mini_batches 16 --log --wandb_entity nathanmonette1 --wandb_project gt-ued 
-``` 
-
-Note that we double the amount of train steps here to account for the nature of the new update model
-
 GROOVE is the official implementation of the following publications:
 1. *Discovering General Reinforcement Learning Algorithms with Adversarial Environment Design, NeurIPS 2023* [[ArXiv](https://arxiv.org/abs/2310.02782) | [NeurIPS](https://neurips.cc/virtual/2023/poster/70658) | [Twitter](https://twitter.com/JacksonMattT/status/1709955868467626058)]
    * Learned Policy Gradient (**LPG**),
@@ -30,6 +18,7 @@ GROOVE is the official implementation of the following publications:
 2. *Discovering Temporally-Aware Reinforcement Learning Algorithms, ICLR 2024* [[ArXiv](https://arxiv.org/abs/2402.05828)]
    * Temporally-Aware LPG (**TA-LPG**),
    * Evolutionary Strategies (**ES**) with antithetic task sampling.
+3. An upcoming work using game theory for UED. 
 
 All scripts are JIT-compiled end-to-end and make extensive use of JAX-based parallelization, enabling meta-training in *under 3 hours* on a single GPU!
 
