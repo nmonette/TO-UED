@@ -57,7 +57,7 @@ def make_train_old(args):
         agent_states, _ = level_sampler.get_training_levels(_rng, train_buffer, train_nash, create_value_critic=False)
         value_critic_states = None
 
-        lpg_train_step_fn = make_lpg_train_step(args, level_sampler.rollout_manager)
+        lpg_train_step_fn = make_lpg_train_step(args, level_sampler)
 
         def _meta_train_loop(carry, _):
             rng, train_state, agent_states, value_critic_states, level_buffer = carry
