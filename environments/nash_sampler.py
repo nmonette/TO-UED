@@ -114,7 +114,7 @@ class NashSampler(LevelSampler):
     
     def _train_lpg(self, rng, train_level, train_state):
         # ---  LPG  training loop ---
-        lpg_train_step_fn = make_lpg_train_step(self.args, self.rollout_manager)
+        lpg_train_step_fn = make_lpg_train_step(self.args, self)
 
         # --- Initialize agent and value critic for training level ---
         rng, agent_rng, value_rng = random.split(rng, 3)
