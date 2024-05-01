@@ -52,7 +52,7 @@ def make_train(args):
         # --- Stack and return metrics ---
         carry = (rng, train_state, agent_states, value_critic_states, level_buffer)
         carry, metrics = jax.lax.scan(
-            _meta_train_loop, carry, None, length=4 # args.train_steps
+            _meta_train_loop, carry, None, length=10 # args.train_steps
         )
         return metrics, train_state, level_buffer
 
