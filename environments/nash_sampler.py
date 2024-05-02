@@ -165,7 +165,7 @@ class NashSampler(LevelSampler):
             
             ## --- Train the agent --- 
             rng, train_rng = jax.random.split(rng)
-            agent_state, _ = train_lpg_agent(train_rng, train_state.train_state, agent_states, self.rollout_manager, self.lpg_hypers.num_agent_updates, self.lpg_hypers.agent_target_coeff) 
+            agent_state, _, _ = train_lpg_agent(train_rng, train_state.train_state, agent_states, self.rollout_manager, self.lpg_hypers.num_agent_updates, self.lpg_hypers.agent_target_coeff) 
             return super(NashSampler, self)._compute_algorithmic_regret(rng, agent_state)
         
 
