@@ -16,6 +16,8 @@ from agents.lpg_agent import train_lpg_agent
 
 from meta.meta import create_lpg_train_state, make_lpg_train_step
 
+from functools import partial
+
 # TODO: Reimplement positive_value_loss and l1_value_loss
 SCORE_FUNCTIONS = ["random", "frozen", "alg_regret"]
 SCORE_TRANSFORMS = ["proportional", "rank"]
@@ -169,7 +171,7 @@ class NashSampler(LevelSampler):
             return super(NashSampler, self)._compute_algorithmic_regret(rng, agent_state)
         
 
-        return jax.lax.cond(jnp.logical_and(train_active, eval_active), other, zero, rng, train_level, eval_level, train_state, train_active, eval_active)     
+        return jax.lax.cond(jnp.logical_and(train_active is not None, eval_active is not None), other, zero, rng, train_level, eval_level, train_state, train_active, eval_active)     
 
     def get_payoff_matrix(self, rng, train_state, train_buffer, eval_buffer):
         # --- Train agents on each level in train buffer ---
@@ -181,7 +183,8 @@ class NashSampler(LevelSampler):
         rng, _rng = jax.random.split(rng)
         _rng = jax.random.split(_rng, (self.buffer_size, self.buffer_size))
 
-        ar_fn = jax.vmap(jax.vmap(self._compute_algorithmic_regret, in_axes=(0, None, 0, 0, 0, None)), in_axes=(0, 0, None, None, None, 0))
+
+        ar_fn = mini_batch_vmap(mini_batch_vmap(self._compute_algorithmic_regret, 10, in_axes=(0, None, 0, 0, 0, None)), 10, (0, 0, None, None, None, 0))
         return ar_fn(_rng, train_buffer.level, eval_buffer.level, train_states, train_buffer.active, eval_buffer.active)
     
     def compute_nash(self, rng, train_state, train_buffer, eval_buffer):
