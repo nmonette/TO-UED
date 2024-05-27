@@ -25,7 +25,7 @@ def gather(action_probabilities, action_index):
 def _scan_with_static(f, _, xs, in_axes):
 
     def fn(_, nonstatic):
-        return f(_, jax.tree_util.tree_map(lambda ax,ful,ns: ful if ax is None else ns, in_axes, xs, nonstatic, is_leaf= lambda x: x is None)) # lambda ax,ful,ns: ful if ax is None else ns
+        return f(_, jax.tree_util.tree_map(lambda ax,ful,ns: ful if ax is None else ns, in_axes, xs, nonstatic, is_leaf= lambda x: x is None)) 
         
     return jax.lax.scan(fn, None, jax.tree_util.tree_map(lambda ax, y: None if ax is None else y, in_axes, xs))
 

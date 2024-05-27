@@ -178,7 +178,7 @@ class NashSampler(LevelSampler):
         rng, *train_rng = jax.random.split(rng, self.buffer_size + 1)
         
         train_rng = jnp.array(train_rng)
-        train_states = jax.vmap(self._train_lpg, in_axes=(0, 0, None,))(train_rng, train_buffer.level, train_state)
+        train_states = mini_batch_vmap(self._train_lpg, 10, in_axes=(0, 0, None,))(train_rng, train_buffer.level, train_state)
 
         rng, _rng = jax.random.split(rng)
         _rng = jax.random.split(_rng, (self.buffer_size, self.buffer_size))
@@ -241,7 +241,7 @@ class NashSampler(LevelSampler):
             train_level = Level(params, lifetime, 0)
 
             # --- Compute Regrets --- 
-            regrets = jax.vmap(self._compute_algorithmic_regret, in_axes=(None, None, 0, None, None, 0))(rng, train_level, eval_buffer.level, train_state, True, eval_buffer.active)
+            regrets = mini_batch_vmap(self._compute_algorithmic_regret, 10, in_axes=(None, None, 0, None, None, 0))(rng, train_level, eval_buffer.level, train_state, True, eval_buffer.active)
 
             # --- Return expected regret over the nash ---
             return train_level, jnp.dot(eval_nash, regrets)
