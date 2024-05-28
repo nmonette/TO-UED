@@ -6,6 +6,8 @@ from models.lpg import LPG
 from models.optim import create_optimizer, create_es_strategy
 from meta.train import lpg_meta_grad_train_step, lpg_es_train_step
 
+import jax
+
 
 def create_lpg_train_state(rng, args, single_env=False):
     """
@@ -36,17 +38,17 @@ def make_lpg_train_step(args, level_sampler):
         # Train an agent entirely when using ES
         lpg_hypers = lpg_hypers.replace(num_agent_updates=level_sampler.max_lifetime)
     if args.use_es:
-        return partial(
+        return jax.jit(partial(
             lpg_es_train_step,
             rollout_manager=level_sampler.rollout_manager,
             num_mini_batches=args.num_mini_batches,
             lpg_hypers=lpg_hypers,
-        )
-    return partial(
+        ))
+    return jax.jit(partial(
         lpg_meta_grad_train_step,
         rollout_manager=level_sampler.rollout_manager,
         num_mini_batches=args.num_mini_batches,
         gamma=args.gamma,
         gae_lambda=args.gae_lambda,
         lpg_hypers=lpg_hypers,
-    )
+    ))

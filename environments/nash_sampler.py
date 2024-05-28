@@ -73,8 +73,10 @@ class NashSampler(LevelSampler):
     
     def initialize_buffers(self, rng):
         rng, train_rng, eval_rng = jax.random.split(rng, 3)
-        train_buffer = self._initialize_buffer(train_rng)
-        eval_buffer = self._initialize_buffer(eval_rng)
+        train_params, train_lifetime = reset_env_params(train_rng, self.env_name, self.env_mode)
+        eval_params, eval_lifetime = reset_env_params(eval_rng, self.env_name, self.env_mode)
+        train_buffer = [LevelBuffer(Level(train_params, train_lifetime, 0), 0.0, False, True)]
+        eval_buffer = [LevelBuffer(Level(eval_params, eval_lifetime, 0), 0.0, False, True)]
 
         return train_buffer, eval_buffer
     
@@ -150,29 +152,27 @@ class NashSampler(LevelSampler):
 
         return train_state
     
-    def _compute_algorithmic_regret(self, rng, train_level, eval_level, train_state=None, train_active=True, eval_active=True):
-        def zero(*args):
-            return 0.
+    
+    
+    def _compute_algorithmic_regret(self, rng, train_level, eval_level, train_state=None):        
+        """
+        We are no longer going to check if it is active, because we will pass in the appropriately sized buffer pre-jit
+        """
+        # --- Train LPG on train_level unless train_level is not provided ---
+        if train_level is not None:
+            train_state = self._train_lpg(rng, train_level, train_state)
+
+        # --- Train an agent on the eval environment using the new LPG ---
+
+        ## --- Initialize agent for eval level ---
+        rng, agent_rng, value_rng = random.split(rng, 3)
+        agent_states = self._create_agent(agent_rng, eval_level)
         
-        def other(rng, train_level, eval_level, train_state, train_active, eval_active):
-            # --- Train LPG on train_level unless train_level is not provided ---
-            if train_level is not None:
-                train_state = self._train_lpg(rng, train_level, train_state)
-
-            # --- Train an agent on the eval environment using the new LPG ---
-
-            ## --- Initialize agent for eval level ---
-            rng, agent_rng, value_rng = random.split(rng, 3)
-            agent_states = self._create_agent(agent_rng, eval_level)
-            
-            ## --- Train the agent --- 
-            rng, train_rng = jax.random.split(rng)
-            agent_state, _, _ = train_lpg_agent(train_rng, train_state.train_state, agent_states, self.rollout_manager, self.lpg_hypers.num_agent_updates, self.lpg_hypers.agent_target_coeff) 
-            return super(NashSampler, self)._compute_algorithmic_regret(rng, agent_state)
-        
-
-        return jax.lax.cond(jnp.logical_and(train_active is not None, eval_active is not None), other, zero, rng, train_level, eval_level, train_state, train_active, eval_active)     
-
+        ## --- Train the agent --- 
+        rng, train_rng = jax.random.split(rng)
+        agent_state, _, _ = train_lpg_agent(train_rng, train_state.train_state, agent_states, self.rollout_manager, self.lpg_hypers.num_agent_updates, self.lpg_hypers.agent_target_coeff) 
+        return super(NashSampler, self)._compute_algorithmic_regret(rng, agent_state)
+    
     def get_payoff_matrix(self, rng, train_state, train_buffer, eval_buffer):
         # --- Train agents on each level in train buffer ---
         rng, *train_rng = jax.random.split(rng, self.buffer_size + 1)
@@ -183,10 +183,10 @@ class NashSampler(LevelSampler):
         rng, _rng = jax.random.split(rng)
         _rng = jax.random.split(_rng, (self.buffer_size, self.buffer_size))
 
-
         ar_fn = mini_batch_vmap(mini_batch_vmap(self._compute_algorithmic_regret, 10, in_axes=(0, None, 0, 0, 0, None)), 10, (0, 0, None, None, None, 0))
         return ar_fn(_rng, train_buffer.level, eval_buffer.level, train_states, train_buffer.active, eval_buffer.active)
     
+    @jax.jit
     def compute_nash(self, rng, train_state, train_buffer, eval_buffer):
         # --- Calculate Payoff Matrix ---
         matrix = self.get_payoff_matrix(rng, train_state, train_buffer, eval_buffer)
@@ -205,6 +205,8 @@ class NashSampler(LevelSampler):
     def get_training_levels(self, rng, train_buffer, train_nash, num_agents=None, create_value_critic=True):
         if num_agents is None:
             num_agents = self.args.num_agents
+
+        print(len(train_buffer))
         
         # --- Sample levels ---
         rng, _rng = jax.random.split(rng)
@@ -224,6 +226,7 @@ class NashSampler(LevelSampler):
             )
         return agent_states, value_critics
 
+    @jax.jit
     def get_train_br(self, rng, train_state, eval_nash, eval_buffer):
         """
         Sample a level, then collect the convex combination of 
@@ -253,6 +256,7 @@ class NashSampler(LevelSampler):
         level = jax.tree_util.tree_map(lambda x: x[idx], levels)
         return level
     
+    @jax.jit
     def get_eval_br(self, rng, train_state):
         """
         Take the trained LPG on the training nash. Then, 

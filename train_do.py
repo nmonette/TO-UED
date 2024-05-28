@@ -25,14 +25,25 @@ def make_train(args):
     
         # --- TRAIN LOOP ---
         lpg_train_step_fn = make_lpg_train_step(args, level_sampler)
+
+        metrics_list = []
         
         # --- Double Oracle (environment generating) Loop ---
-        def _meta_train_loop(carry, t):
-            rng, train_state, train_buffer, eval_buffer, train_nash, eval_nash = carry
+        for t in range(args.buffer_size):
+            
+            train_tree = jax.tree.map(lambda *xs: jnp.stack(xs), *train_buffer)
+            eval_tree = jax.tree.map(lambda *xs: jnp.stack(xs), *train_buffer)
+            
+            if len(train_buffer) == 1:
+                train_nash = jnp.ones((1, ))
+                eval_nash = jnp.ones((1, ))
+            else:
+                train_nash, eval_nash, game = level_sampler.compute_nash(nash_rng, train_state, train_tree, eval_tree)
+                print(game)
 
             # --- Initialilze training agents ---
             rng, _rng = jax.random.split(rng)
-            agent_states, value_critic_states = level_sampler.get_training_levels(rng, train_buffer, train_nash, create_value_critic=not args.use_es)
+            agent_states, value_critic_states = level_sampler.get_training_levels(rng, train_tree, train_nash, create_value_critic=not args.use_es)
             
             # --- Update LPG ---
             rng, _rng = jax.random.split(rng)
@@ -57,24 +68,17 @@ def make_train(args):
             new_train = level_sampler.get_train_br(train_rng, train_state, eval_nash, eval_buffer)
             new_eval, eval_regret = level_sampler.get_eval_br(eval_rng, train_state)
 
-            reset_fn = lambda x,y: x.at[t].set(y)
-            train_buffer = train_buffer.replace(level=jax.tree_util.tree_map(reset_fn, train_buffer.level, new_train), active=train_buffer.active.at[t].set(True))
-            
-            eval_buffer = eval_buffer.replace(level=jax.tree_util.tree_map(reset_fn, eval_buffer.level, new_eval), active=eval_buffer.active.at[t].set(True))
-
-            train_nash, eval_nash, game = level_sampler.compute_nash(nash_rng, train_state, train_buffer, eval_buffer)
+            train_buffer.append(new_train.replace(active=True))
+            new_eval.append(new_eval.replace(active=True))
 
             metrics["GT"] = {
                 "eval_regret": eval_regret
             }
 
-            return (rng, train_state, train_buffer, eval_buffer, train_nash, eval_nash), metrics
+            metrics_list.append(metrics)
         
-        # --- Stack and return metrics ---
-        carry = (rng, train_state, train_buffer, eval_buffer, train_nash, eval_nash)
-        carry, metrics = jax.lax.scan(
-            _meta_train_loop, carry, jnp.arange(1, args.buffer_size), length=args.buffer_size - 1
-        )
+        metrics = jax.tree.map(lambda *xs: list(xs), *metrics_list)
+
         return metrics, train_state, train_buffer
     
     return _train_fn
@@ -84,7 +88,7 @@ def run_training_experiment(args):
         init_logger(args)
     train_fn = make_train(args)
     rng = random.PRNGKey(args.seed)
-    metrics, train_state, level_buffer = jax.jit(train_fn)(rng)
+    metrics, train_state, level_buffer = train_fn(rng) # jax.jit(train_fn)(rng)
     if args.log:
         log_results(args, metrics, train_state, level_buffer)
     else:
