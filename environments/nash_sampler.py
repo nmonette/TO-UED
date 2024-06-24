@@ -146,7 +146,7 @@ class NashSampler(LevelSampler):
 
         carry = (rng, train_state, agent_states, value_critic_states)
         carry, metrics = jax.lax.scan(
-            _meta_train_loop, carry, None, length=self.args.train_steps
+            _meta_train_loop, carry, None, length=self.args.eval_shift_size
         )
         rng, train_state, agent_states, value_critic_states = carry
 
@@ -178,35 +178,34 @@ class NashSampler(LevelSampler):
         rng, *train_rng = jax.random.split(rng, self.buffer_size + 1)
         
         train_rng = jnp.array(train_rng)
-        train_states = mini_batch_vmap(self._train_lpg, 10, in_axes=(0, 0, None,))(train_rng, train_buffer.level, train_state)
+        train_states = mini_batch_vmap(self._train_lpg, 10, in_axes=(0, 0, None,), size=len(train_buffer))(train_rng, train_buffer.level, train_state)
 
         rng, _rng = jax.random.split(rng)
         _rng = jax.random.split(_rng, (self.buffer_size, self.buffer_size))
 
-        ar_fn = mini_batch_vmap(mini_batch_vmap(self._compute_algorithmic_regret, 10, in_axes=(0, None, 0, 0, 0, None)), 10, (0, 0, None, None, None, 0))
+        ar_fn = mini_batch_vmap(mini_batch_vmap(self._compute_algorithmic_regret, 10, in_axes=(0, None, 0, 0), size=_rng.shape[1]), 10, in_axes=(0, 0, None, None), size=_rng.shape[0])
         return ar_fn(_rng, train_buffer.level, eval_buffer.level, train_states, train_buffer.active, eval_buffer.active)
     
-    @jax.jit
-    def compute_nash(self, rng, train_state, train_buffer, eval_buffer):
-        # --- Calculate Payoff Matrix ---
-        matrix = self.get_payoff_matrix(rng, train_state, train_buffer, eval_buffer)
-        rng, _rng = jax.random.split(rng)
-        # --- Initialize random strategies ---
-        nz = jnp.sum(train_buffer.active)
-        strats = jnp.where(jnp.arange(0, matrix.shape[0]) < nz, jax.random.uniform(_rng, (2, matrix.shape[0])), 0)
-        x = projection_simplex(strats[0], nz)
-        y = projection_simplex(strats[1], nz)
-        # -- Calculate nash ---
-        game = Game(matrix, x, y)
-        x,y = get_nash(game, jnp.sum(train_buffer.active), jnp.sum(eval_buffer.active))
+    def get_compute_nash(self):
+        @jax.jit
+        def compute_nash(rng, train_state, train_buffer, eval_buffer):
+            # --- Calculate Payoff Matrix ---
+            matrix = self.get_payoff_matrix(rng, train_state, train_buffer, eval_buffer)
+            rng, _rng = jax.random.split(rng)
+            # --- Initialize random strategies ---
+            strats = jax.random.uniform(_rng, (2, matrix.shape[0]))
+            x = projection_simplex(strats[0], 0)
+            y = projection_simplex(strats[1], 0)
+            # -- Calculate nash ---
+            game = Game(matrix, x, y)
+            x,y = get_nash(game, jnp.sum(train_buffer.active), jnp.sum(eval_buffer.active))
 
-        return x, y, matrix
+            return x, y, matrix
+        return compute_nash
     
     def get_training_levels(self, rng, train_buffer, train_nash, num_agents=None, create_value_critic=True):
         if num_agents is None:
             num_agents = self.args.num_agents
-
-        print(len(train_buffer))
         
         # --- Sample levels ---
         rng, _rng = jax.random.split(rng)
@@ -226,8 +225,7 @@ class NashSampler(LevelSampler):
             )
         return agent_states, value_critics
 
-    @jax.jit
-    def get_train_br(self, rng, train_state, eval_nash, eval_buffer):
+    def get_train_br(self):
         """
         Sample a level, then collect the convex combination of 
         algorithmic regrets over the nash of evaluative 
@@ -237,48 +235,53 @@ class NashSampler(LevelSampler):
         environment. If choosing to use a generator, 
         use the -regret as a reward for the generator.
         """
-        def _br_loop(rng):
-            # --- Sample a level to train a LPG on ---
-            rng, _rng = jax.random.split(rng)
-            params, lifetime = reset_env_params(_rng, self.env_name, self.env_mode)
-            train_level = Level(params, lifetime, 0)
+        @jax.jit
+        def br_fn(rng, train_state, eval_nash, eval_buffer):
+            def _br_loop(rng):
+                # --- Sample a level to train a LPG on ---
+                rng, _rng = jax.random.split(rng)
+                params, lifetime = reset_env_params(_rng, self.env_name, self.env_mode)
+                train_level = Level(params, lifetime, 0)
 
-            # --- Compute Regrets --- 
-            regrets = mini_batch_vmap(self._compute_algorithmic_regret, 10, in_axes=(None, None, 0, None, None, 0))(rng, train_level, eval_buffer.level, train_state, True, eval_buffer.active)
+                # --- Compute Regrets --- 
+                regrets = mini_batch_vmap(self._compute_algorithmic_regret, 10, in_axes=(None, None, 0, None), size=len(eval_buffer))(rng, train_level, eval_buffer.level, train_state)
 
-            # --- Return expected regret over the nash ---
-            return train_level, jnp.dot(eval_nash, regrets)
-        
-        rng = jax.random.split(rng, self.args.br)
-        levels, regrets = mini_batch_vmap(_br_loop, self.args.br // 20)(rng)
-        
-        idx = jnp.argmin(regrets)
-        level = jax.tree_util.tree_map(lambda x: x[idx], levels)
-        return level
+                # --- Return expected regret over the nash ---
+                return train_level, jnp.dot(eval_nash, regrets)
+            
+            rng = jax.random.split(rng, self.args.br)
+            levels, regrets = mini_batch_vmap(_br_loop, self.args.br // 20, size=self.args.br)(rng)
+            
+            idx = jnp.argmin(regrets)
+            level = jax.tree_util.tree_map(lambda x: x[idx], levels)
+            return level
+        return br_fn
     
-    @jax.jit
-    def get_eval_br(self, rng, train_state):
+    def get_eval_br(self):
         """
         Take the trained LPG on the training nash. Then, 
         repeatedly sample envs and evaluate regret on them.
         """
-        def _br_loop(rng):
-            # --- Sample a level ---
-            rng, _rng = jax.random.split(rng)
-            params, lifetime = reset_env_params(_rng, self.env_name, self.env_mode)
-            eval_level = Level(params, lifetime, 0)
+        @jax.jit
+        def br_fn(rng, train_state):
+            def _br_loop(rng):
+                # --- Sample a level ---
+                rng, _rng = jax.random.split(rng)
+                params, lifetime = reset_env_params(_rng, self.env_name, self.env_mode)
+                eval_level = Level(params, lifetime, 0)
 
-            # --- Collect Evaluative Regrets ---
-            rng, _rng = jax.random.split(rng)
-            return eval_level, self._compute_algorithmic_regret(_rng, None, eval_level, train_state, True, True)
-        
-        rng = jax.random.split(rng, self.args.br)
-        levels, regrets = mini_batch_vmap(_br_loop, self.args.br // 20)(rng)
+                # --- Collect Evaluative Regrets ---
+                rng, _rng = jax.random.split(rng)
+                return eval_level, self._compute_algorithmic_regret(_rng, None, eval_level, train_state)
+            
+            rng = jax.random.split(rng, self.args.br)
+            levels, regrets = mini_batch_vmap(_br_loop, self.args.br // 20, size=self.args.br)(rng)
 
-        idx = jnp.argmax(regrets)
-        level = jax.tree_util.tree_map(lambda x: x[idx], levels)
+            idx = jnp.argmax(regrets)
+            level = jax.tree_util.tree_map(lambda x: x[idx], levels)
 
-        return level, regrets[idx]
+            return level, regrets[idx]
+        return br_fn
     
     def sample(self, rng, train_buffer, train_nash, old_agents, old_value_critics):
         # --- Check which agents' lifetimes are finished ---

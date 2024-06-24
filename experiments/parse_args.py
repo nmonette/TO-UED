@@ -193,6 +193,11 @@ def parse_args(cmd_args=sys.argv[1:]):
         type=float,
         default=1.0,
     )
+    
+    # --- TO-UED ---
+    parser.add_argument(
+        "--eval_shift_size", help="Number of meta-training steps taken before evaluating regret", type=int, default=10
+    )
 
     args, rest_args = parser.parse_known_args(cmd_args)
     if rest_args:

@@ -21,7 +21,11 @@ def make_train(args):
         level_sampler = NashSampler(args)
         rng, buffer_rng, train_rng = jax.random.split(rng, 3)
         train_buffer, eval_buffer = level_sampler.initialize_buffers(buffer_rng)
-        train_state = create_lpg_train_state(train_rng, args)        
+        train_state = create_lpg_train_state(train_rng, args)   
+
+        train_br = level_sampler.get_train_br()
+        eval_br = level_sampler.get_eval_br() 
+        compute_nash = level_sampler.get_compute_nash()    
     
         # --- TRAIN LOOP ---
         lpg_train_step_fn = make_lpg_train_step(args, level_sampler)
@@ -32,13 +36,13 @@ def make_train(args):
         for t in range(args.buffer_size):
             
             train_tree = jax.tree.map(lambda *xs: jnp.stack(xs), *train_buffer)
-            eval_tree = jax.tree.map(lambda *xs: jnp.stack(xs), *train_buffer)
+            eval_tree = jax.tree.map(lambda *xs: jnp.stack(xs), *eval_buffer)
             
             if len(train_buffer) == 1:
                 train_nash = jnp.ones((1, ))
                 eval_nash = jnp.ones((1, ))
             else:
-                train_nash, eval_nash, game = level_sampler.compute_nash(nash_rng, train_state, train_tree, eval_tree)
+                train_nash, eval_nash, game = compute_nash(nash_rng, train_state, train_tree, eval_tree)
                 print(game)
 
             # --- Initialilze training agents ---
@@ -65,11 +69,11 @@ def make_train(args):
             """
             # --- Get best response levels ---
             rng, train_rng, eval_rng, nash_rng = jax.random.split(rng, 4)
-            new_train = level_sampler.get_train_br(train_rng, train_state, eval_nash, eval_buffer)
-            new_eval, eval_regret = level_sampler.get_eval_br(eval_rng, train_state)
+            new_train = train_br(train_rng, train_state, eval_nash, eval_tree)
+            new_eval, eval_regret = eval_br(eval_rng, train_state)
 
             train_buffer.append(new_train.replace(active=True))
-            new_eval.append(new_eval.replace(active=True))
+            eval_buffer.append(new_eval.replace(active=True))
 
             metrics["GT"] = {
                 "eval_regret": eval_regret
@@ -77,7 +81,7 @@ def make_train(args):
 
             metrics_list.append(metrics)
         
-        metrics = jax.tree.map(lambda *xs: list(xs), *metrics_list)
+        metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics_list)
 
         return metrics, train_state, train_buffer
     
