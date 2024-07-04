@@ -157,7 +157,7 @@ class LevelSampler:
 
             return (rng, agents), t+1, regrets 
         
-        _, final_t, regrets = jax.lax.while_loop(lambda x: terminated_mask[x[1]] == 1, loop, ((rng, agents), 0, jnp.zeros_like(terminated_mask, dtype=float)))
+        _, final_t, regrets = jax.lax.while_loop(lambda x: jnp.logical_and(terminated_mask[x[1]] == 1, x[1] < terminated_mask.shape[0]), loop, ((rng, agents), 0, jnp.zeros_like(terminated_mask, dtype=float)))
 
         # --- Putting terminated agents back in order ---
         _, regrets = jax.lax.sort_key_val(order, regrets)
@@ -252,6 +252,23 @@ class LevelSampler:
                     score = self.heuristic_eval(
                         _rng, old_agents, terminated_mask
                     )
+                elif self.regret_method == "test":
+                    _rng = jax.random.split(_rng, batch_size)
+                    score1 = mini_batch_vmap(
+                        self._compute_algorithmic_regret, self.num_mini_batches
+                    )(_rng, old_agents)
+                    score2 = self.loop_eval(
+                        _rng[0], old_agents, terminated_mask
+                    )
+                    score3 = self.heuristic_eval(
+                        _rng[0], old_agents, terminated_mask
+                    )
+
+                    print_fn = lambda _, i: jax.debug.print("{},{}", score2[i], score3[i])
+                    jax.lax.scan(print_fn, None, jnp.arange(len(score2)))
+
+                    score = score1
+
                 else:
                     raise NotImplementedError(
                         f"Regret method {self.regret_method} is not implemented."
