@@ -264,7 +264,7 @@ class LevelSampler:
                         _rng[0], old_agents, terminated_mask
                     )
 
-                    print_fn = lambda _, i: jax.debug.print("{},{}", score2[i], score3[i])
+                    print_fn = lambda _, i: (jax.debug.print("{},{}", score2[i], score3[i]), i)
                     jax.lax.scan(print_fn, None, jnp.arange(len(score2)))
 
                     score = score1
