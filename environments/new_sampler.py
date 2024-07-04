@@ -236,7 +236,7 @@ class LevelSampler:
                 agents, _, _  = mini_batch_vmap(
                     lambda r, a: train_lpg_agent(
                         r,
-                        lpg_train_state,
+                        lpg_train_state.train_state,
                         a,
                         self.rollout_manager,
                         self.lpg_hypers.num_agent_updates,
