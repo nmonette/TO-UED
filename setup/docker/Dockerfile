@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
+FROM nvidia/cuda:12.5.0-devel-ubuntu22.04
 
 ENV CUDA_PATH /usr/local/cuda
 ENV CUDA_INCLUDE_PATH /usr/local/cuda/include
@@ -7,14 +7,14 @@ ENV CUDA_LIBRARY_PATH /usr/local/cuda/lib64
 # Set timezone
 ENV TZ=Europe/London DEBIAN_FRONTEND=noninteractive
 
-# Add old libraries (Python 3.8) to Ubuntu 22.04
+# Add old libraries (Python 3.11) to Ubuntu 22.04
 RUN apt update
 RUN apt install -y software-properties-common && add-apt-repository ppa:deadsnakes/ppa
 RUN apt install -y \
     git \
-    python3.8 \
+    python3.11 \
     python3-pip \
-    python3.8-venv \
+    python3.11-venv \
     python3-setuptools \
     python3-wheel
 
@@ -34,8 +34,9 @@ WORKDIR /home/duser
 
 # Install Python packages
 ENV PATH="/home/duser/.local/bin:$PATH"
-RUN python3.8 -m pip install --upgrade pip
+RUN python3.11 -m pip install --upgrade pip
+RUN python3.11 -m pip install tensorrt
 ARG REQS
-RUN python3.8 -m pip install $REQS -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+RUN python3.11 -m pip install $REQS -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 WORKDIR /home/duser/groove

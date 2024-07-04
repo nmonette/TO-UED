@@ -151,12 +151,13 @@ class LevelSampler:
             rng, agents = args
             rng, _rng = jax.random.split(rng)
 
-            regret = self._compute_algorithmic_regret(_rng, agents[t])
+            agent = jax.tree_util.tree_map(lambda x: x[t], agents)
+            regret = self._compute_algorithmic_regret(_rng, agent)
             regrets = regrets.at[t].set(regret)
 
             return (rng, agents), t+1, regrets 
         
-        _, final_t, regrets = jax.lax.while_loop(lambda x: terminated_mask[x[2]] == 1, loop, ((rng, agents), terminated_mask, 0, jnp.zeros_like(terminated_mask, dtype=float)))
+        _, final_t, regrets = jax.lax.while_loop(lambda x: terminated_mask[x[1]] == 1, loop, ((rng, agents), 0, jnp.zeros_like(terminated_mask, dtype=float)))
 
         # --- Putting terminated agents back in order ---
         _, regrets = jax.lax.sort_key_val(order, regrets)
@@ -178,8 +179,9 @@ class LevelSampler:
         # --- vmap over hopefully most of the terminated agents ---
         rng, _rng = jax.random.split(rng)
         _rng = jax.random.split(_rng, self.num_regret_updates)
-        cond_fn = lambda rng, agent, cond: jax.lax.cond(cond, self._compute_algorithmic_regret, lambda x,y: 0., rng, agent)
-        vmap_regrets = jax.vmap(cond_fn)(rng, vmap_agents, terminated_mask[:self.num_regret_updates])
+        cond_fn = lambda r, agent, cond: jax.lax.cond(cond, self._compute_algorithmic_regret, lambda x,y: 0., r, agent)
+        ## NOTE: self.num_regret_updates must be divisible by `self.num_mini_batches`
+        vmap_regrets = mini_batch_vmap(cond_fn, self.num_mini_batches)(_rng, vmap_agents, terminated_mask[:self.num_regret_updates])
         
         # --- loop over the rest ---
         rng, _rng = jax.random.split(rng)
