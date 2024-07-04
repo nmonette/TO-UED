@@ -62,6 +62,10 @@ class LevelSampler:
         self.env_kwargs, self.max_rollout_len, self.max_lifetime = get_env_spec(
             self.env_name, self.env_mode
         )
+
+        self.regret_method = args.regret_method
+        self.num_regret_updates = args.num_regret_updates
+
         self.env = get_env(self.env_name, self.env_kwargs)
         self.rollout_manager = RolloutWrapper(
             self.env_name, args.train_rollout_len, self.max_rollout_len, self.env_kwargs
@@ -130,6 +134,62 @@ class LevelSampler:
                 _rng, self.agent_hypers, self.obs_shape
             )
         return level_buffer, agent_states, value_critics
+    
+    def loop_eval(
+        self,
+        rng: chex.PRNGKey,
+        agents: AgentState,
+        terminated_mask: jnp.ndarray
+    ):
+        # --- Putting terminated agents first ---
+        order = jnp.argsort(terminated_mask, descending=True)
+        terminated_mask = terminated_mask[order]
+
+        def loop(carry):
+            args, t, regrets = carry
+
+            rng, agents = args
+            rng, _rng = jax.random.split(rng)
+
+            regret = self._compute_algorithmic_regret(_rng, agents[t])
+            regrets = regrets.at[t].set(regret)
+
+            return (rng, agents), t+1, regrets 
+        
+        _, final_t, regrets = jax.lax.while_loop(lambda x: terminated_mask[x[2]] == 1, loop, ((rng, agents), terminated_mask, 0, jnp.zeros_like(terminated_mask, dtype=float)))
+
+        # --- Putting terminated agents back in order ---
+        _, regrets = jax.lax.sort_key_val(order, regrets)
+
+        return regrets
+    
+    def heuristic_eval(
+        self,
+        rng: chex.PRNGKey,
+        agents: AgentState,
+        terminated_mask: jnp.ndarray      
+    ):
+        order = jnp.argsort(terminated_mask, descending=True)
+        terminated_mask = terminated_mask[order]
+
+        vmap_agents = jax.tree_util.tree_map(lambda x: x[order][:self.num_regret_updates], agents)
+        rest_agents = jax.tree_util.tree_map(lambda x: x[order][self.num_regret_updates:], agents)
+        
+        # --- vmap over hopefully most of the terminated agents ---
+        rng, _rng = jax.random.split(rng)
+        _rng = jax.random.split(_rng, self.num_regret_updates)
+        cond_fn = lambda rng, agent, cond: jax.lax.cond(cond, self._compute_algorithmic_regret, lambda x,y: 0., rng, agent)
+        vmap_regrets = jax.vmap(cond_fn)(rng, vmap_agents, terminated_mask[:self.num_regret_updates])
+        
+        # --- loop over the rest ---
+        rng, _rng = jax.random.split(rng)
+        rest_regrets = self.loop_eval(
+            rng, rest_agents, terminated_mask[self.num_regret_updates:]
+        )
+
+        # --- combine and re-order regrets ---
+        total_regrets = jnp.concatenate((vmap_regrets, rest_regrets))
+        return jax.lax.sort_key_val(order, total_regrets)[1]
 
     def sample(
         self,
@@ -175,10 +235,25 @@ class LevelSampler:
             # --- Evaluate agent and compute regret ---
             if self.score_function == "alg_regret":
                 rng, _rng = jax.random.split(rng)
-                _rng = jax.random.split(_rng, batch_size)
-                score = mini_batch_vmap(
-                    self._compute_algorithmic_regret, self.num_mini_batches
-                )(_rng, old_agents)
+                
+                if self.regret_method == "mini_batch_vmap":
+                    _rng = jax.random.split(_rng, batch_size)
+                    score = mini_batch_vmap(
+                        self._compute_algorithmic_regret, self.num_mini_batches
+                    )(_rng, old_agents)
+
+                elif self.regret_method == "loop":
+                    score = self.loop_eval(
+                        _rng, old_agents, terminated_mask
+                    )
+                elif self.regret_method == "heuristic":
+                    score = self.heuristic_eval(
+                        _rng, old_agents, terminated_mask
+                    )
+                else:
+                    raise NotImplementedError(
+                        f"Regret method {self.regret_method} is not implemented."
+                    )
             else:
                 raise NotImplementedError(
                     f"Level score function {self.score_function} is not implemented."

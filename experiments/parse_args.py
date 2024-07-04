@@ -193,6 +193,12 @@ def parse_args(cmd_args=sys.argv[1:]):
         type=float,
         default=1.0,
     )
+    parser.add_argument(
+        "--regret_method", help="Method for computing regret", type=str, default="loop", choices=["loop", "mini_batch_vmap", "heuristic"]
+    )
+    parser.add_argument(
+        "--num_regret_updates", help="Number of regret updates to VMAP when using the regret vmap heuristic", type=int, default=32
+    )
 
     args, rest_args = parser.parse_known_args(cmd_args)
     if rest_args:
