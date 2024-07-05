@@ -28,23 +28,13 @@ def reset_env_params(rng: chex.PRNGKey, env_mode: str):
     # --- Sample remaining parameters ---
     params["auto_collect"] = mps["auto_collect"]
     params["random_respawn"] = not mps["tabular"]
-    for other_param in ["max_steps_in_episode", "n_objs", "grid_size"]:
+    for other_param in ["max_steps_in_episode", "n_objs", "grid_size", "walls"]:
         rng, _rng = random.split(rng)
         params[other_param] = _sample_param(_rng, mps[other_param])
 
-    # --- Sample wall positions ---
-    rng, _rng = random.split(rng)
-    wall_idxs = _sample_param(_rng, mps["wall_idxs"])
-    params["walls"] = (
-        jnp.zeros(kwargs["max_grid_size"] ** 2, dtype=jnp.bool_).at[wall_idxs].set(True)
-    )
-
     # --- Sample agent and object positions ---
     all_pos = jnp.arange(kwargs["max_grid_size"] ** 2)
-    valid_pos = jnp.logical_and(
-        all_pos < params["grid_size"] ** 2,
-        jnp.logical_not(jnp.isin(all_pos, wall_idxs)),
-    )
+    valid_pos = jnp.logical_and(all_pos < params["grid_size"] ** 2, ~params["walls"])
     rng, _rng = random.split(rng)
     sampled_pos = random.choice(
         _rng, all_pos, shape=(kwargs["max_n_objs"] + 1,), replace=False, p=valid_pos
@@ -107,11 +97,12 @@ def uniform_first_pos(key: chex.PRNGKey, n: int, minval: float, maxval: float):
     return samples
 
 
-def uniform_wall_idxs(key: chex.PRNGKey, n_walls: int, max_grid_size: int):
+def uniform_walls(key: chex.PRNGKey, n_walls: int, max_grid_size: int):
     """Uniformly samples wall indices."""
-    return random.choice(
+    wall_idxs = random.choice(
         key, jnp.arange(max_grid_size**2), shape=(n_walls,), replace=False
     )
+    return jnp.zeros(max_grid_size**2, dtype=bool).at[wall_idxs].set(True)
 
 
 def log_uniform(key: chex.PRNGKey, shape: tuple, minval: float, maxval: float):
@@ -141,7 +132,7 @@ def get_maze_params(maze_name: str):
         "tabular": True,
         "auto_collect": True,
     }
-    shared_params["wall_idxs"] = MAZE_DESIGNS[maze_name]
+    shared_params["walls"] = MAZE_DESIGNS[maze_name]
     return shared_params
 
 
@@ -155,7 +146,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": [0.05, 0.1, 0.5],
         "n_objs": 4,
         "grid_size": 11,
-        "wall_idxs": jnp.array([], dtype=jnp.int32),
+        "walls": jnp.zeros(11**2, dtype=bool),
         "tabular": True,
         "auto_collect": True,
     },
@@ -168,7 +159,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": [0.0, 0.0],
         "n_objs": 2,
         "grid_size": 13,
-        "wall_idxs": jnp.array([], dtype=jnp.int32),
+        "walls": jnp.zeros(13**2, dtype=bool),
         "tabular": True,
         "auto_collect": True,
     },
@@ -181,7 +172,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": [0.01, 1.0],
         "n_objs": 4,
         "grid_size": 11,
-        "wall_idxs": jnp.array([], dtype=jnp.int32),
+        "walls": jnp.zeros(11**2, dtype=bool),
         "tabular": True,
         "auto_collect": True,
     },
@@ -195,13 +186,9 @@ ENV_MODE_PARAMS = {
         "n_objs": 5,  # Reference: 7
         "grid_size": 9,
         # Vertical wall down centre with two corridors
-        "wall_idxs": jnp.argwhere(
-            jnp.logical_and(
-                jnp.arange(9**2) % 9 == 4,
-                jnp.logical_not(
-                    jnp.isin(jnp.arange(9**2), jnp.array([(9 * 1) + 4, (9 * 7) + 4]))
-                ),
-            )
+        "walls": jnp.logical_and(
+            jnp.arange(9**2) % 9 == 4,
+            ~jnp.isin(jnp.arange(9**2), jnp.array([(9 * 1) + 4, (9 * 7) + 4])),
         ),
         "tabular": True,
         "auto_collect": True,
@@ -216,25 +203,15 @@ ENV_MODE_PARAMS = {
         "n_objs": 4,
         "grid_size": 11,
         # Vertical and horizontal walls, each with two corridors
-        "wall_idxs": jnp.argwhere(
-            jnp.logical_or(
-                jnp.logical_and(
-                    jnp.arange(11**2) % 11 == 5,
-                    jnp.logical_not(
-                        jnp.isin(
-                            jnp.arange(11**2), jnp.array([(11 * 0) + 5, (11 * 7) + 5])
-                        )
-                    ),
-                ),
-                jnp.logical_and(
-                    jnp.arange(11**2) // 11 == 4,
-                    jnp.logical_not(
-                        jnp.isin(
-                            jnp.arange(11**2), jnp.array([(11 * 4) + 2, (11 * 4) + 8])
-                        )
-                    ),
-                ),
-            )
+        "walls": jnp.logical_or(
+            jnp.logical_and(
+                jnp.arange(11**2) % 11 == 5,
+                ~jnp.isin(jnp.arange(11**2), jnp.array([(11 * 0) + 5, (11 * 7) + 5]))
+            ),
+            jnp.logical_and(
+                jnp.arange(11**2) // 11 == 4,
+                ~jnp.isin(jnp.arange(11**2), jnp.array([(11 * 4) + 2, (11 * 4) + 8]))
+            ),
         ),
         "tabular": True,
         "auto_collect": True,
@@ -248,7 +225,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": [0.05, 0.1, 0.5],
         "n_objs": 4,
         "grid_size": 11,
-        "wall_idxs": jnp.array([], dtype=jnp.int32),
+        "walls": jnp.zeros(11**2, dtype=bool),
         "tabular": False,
         "auto_collect": True,
     },
@@ -261,7 +238,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": [0.01, 1.0],
         "n_objs": 4,
         "grid_size": 11,
-        "wall_idxs": jnp.array([], dtype=jnp.int32),
+        "walls": jnp.zeros(11**2, dtype=bool),
         "tabular": False,
         "auto_collect": True,
     },
@@ -274,7 +251,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": [0.05, 0.1],
         "n_objs": 4,
         "grid_size": 7,
-        "wall_idxs": jnp.array([9, 25]),
+        "walls": jnp.zeros(7**2, dtype=bool).at[jnp.array([9, 25])].set(True),
         "tabular": False,
         "auto_collect": True,
     },
@@ -287,7 +264,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": [1.0, 1.0],
         "n_objs": 3,
         "grid_size": 7,
-        "wall_idxs": jnp.array([], dtype=jnp.int32),
+        "walls": jnp.zeros(7**2, dtype=bool),
         "tabular": False,
         "auto_collect": True,
     },
@@ -300,7 +277,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": [1.0],
         "n_objs": 1,
         "grid_size": 11,
-        "wall_idxs": jnp.array([], dtype=jnp.int32),
+        "walls": jnp.zeros(11**2, dtype=bool),
         "tabular": False,
         "auto_collect": True,
     },
@@ -314,7 +291,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": [1.0],
         "n_objs": 2,
         "grid_size": 3,
-        "wall_idxs": jnp.array([], dtype=jnp.int32),
+        "walls": jnp.zeros(3**2, dtype=bool),
         "tabular": False,
         "auto_collect": True,
     },
@@ -334,7 +311,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": partial(log_uniform, shape=(3,), minval=1e-3, maxval=1e-1),
         "n_objs": partial(random.choice, a=jnp.arange(1, 4)),
         "grid_size": partial(random.choice, a=jnp.arange(4, 7)),
-        "wall_idxs": partial(uniform_wall_idxs, n_walls=7, max_grid_size=6),
+        "walls": partial(uniform_walls, n_walls=7, max_grid_size=6),
         "tabular": True,
         "auto_collect": True,
     },
@@ -349,7 +326,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": partial(log_uniform, shape=(4,), minval=1e-3, maxval=1e-1),
         "n_objs": partial(random.choice, a=jnp.arange(2, 5)),
         "grid_size": partial(random.choice, a=jnp.arange(6, 9)),
-        "wall_idxs": partial(uniform_wall_idxs, n_walls=10, max_grid_size=8),
+        "walls": partial(uniform_walls, n_walls=10, max_grid_size=8),
         "tabular": True,
         "auto_collect": True,
     },
@@ -364,7 +341,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": partial(log_uniform, shape=(5,), minval=1e-3, maxval=1e-1),
         "n_objs": partial(random.choice, a=jnp.arange(2, 6)),
         "grid_size": partial(random.choice, a=jnp.arange(8, 11)),
-        "wall_idxs": partial(uniform_wall_idxs, n_walls=15, max_grid_size=10),
+        "walls": partial(uniform_walls, n_walls=15, max_grid_size=10),
         "tabular": True,
         "auto_collect": True,
     },
@@ -379,7 +356,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": partial(log_uniform, shape=(5,), minval=1e-3, maxval=1e-1),
         "n_objs": partial(random.choice, a=jnp.arange(1, 6)),
         "grid_size": partial(random.choice, a=jnp.arange(4, 11)),
-        "wall_idxs": partial(uniform_wall_idxs, n_walls=15, max_grid_size=10),
+        "walls": partial(uniform_walls, n_walls=15, max_grid_size=10),
         "tabular": True,
         "auto_collect": True,
     },
@@ -394,7 +371,7 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": partial(log_uniform, shape=(5,), minval=1e-3, maxval=1e-1),
         "n_objs": partial(random.choice, a=jnp.arange(1, 6)),
         "grid_size": partial(random.choice, a=jnp.arange(4, 11)),
-        "wall_idxs": partial(uniform_wall_idxs, n_walls=15, max_grid_size=10),
+        "walls": partial(uniform_walls, n_walls=15, max_grid_size=10),
         "tabular": False,
         "auto_collect": True,
     },
@@ -407,16 +384,12 @@ ENV_MODE_PARAMS = {
         "obj_p_respawn": partial(log_uniform, shape=(2,), minval=1e-3, maxval=1e-1),
         "n_objs": partial(random.choice, a=jnp.arange(1, 3)),
         "grid_size": partial(random.choice, a=jnp.arange(3, 5)),
-        "wall_idxs": partial(uniform_wall_idxs, n_walls=4, max_grid_size=4),
+        "walls": partial(uniform_walls, n_walls=4, max_grid_size=4),
         "tabular": True,
         "auto_collect": True,
     },
     # Mazes
     **{maze: get_maze_params(maze) for maze in MAZE_DESIGNS},
-    "mazes": {
-        "manual": True,
-        "modes": tuple(MAZE_DESIGNS),
-    },
 }
 
 
@@ -540,7 +513,6 @@ ENV_MODE_KWARGS = {
     },
     # Mazes
     **{maze: _MAZE_KWARGS for maze in MAZE_DESIGNS},
-    "mazes": _MAZE_KWARGS,
 }
 
 ENV_MODE_EPISODE_LEN = {
@@ -566,7 +538,6 @@ ENV_MODE_EPISODE_LEN = {
     "debug": 10,
     # Mazes
     **{maze: 50 for maze in MAZE_DESIGNS},
-    "mazes": 50,
 }
 
 
@@ -633,7 +604,6 @@ ENV_MODE_LIFETIME = {
     "debug": lambda _: _DEBUG_LIFETIME,
     # Mazes
     **{maze: (lambda _: _MAZE_LIFETIME) for maze in MAZE_DESIGNS},
-    "mazes": lambda _: _MAZE_LIFETIME,
 }
 
 ENV_MODE_LIFETIME_MAX = {
@@ -703,5 +673,4 @@ MODE_AGENT_HYPERS = {
     "debug": _TABULAR_HYPERS,
     # Mazes
     **{maze: _TABULAR_HYPERS for maze in MAZE_DESIGNS},
-    "mazes": _TABULAR_HYPERS,
 }
