@@ -19,6 +19,9 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--env_mode", help="Environment mode", type=str, default="all_shortlife"
     )
     parser.add_argument(
+        "--eval_env_mode", help="Environment mode for eval levels", default="all_shortlife"
+    )
+    parser.add_argument(
         "--env_workers",
         help="Number of environment workers per agent",
         type=int,
@@ -42,6 +45,12 @@ def parse_args(cmd_args=sys.argv[1:]):
         help="Number of meta-training mini-batches",
         type=int,
         default=16,
+    )
+    parser.add_argument(
+        "--regret-frequency",
+        help="Number of meta-training iterations before another regret update",
+        type=int,
+        default=1,
     )
 
     # Double Oracle

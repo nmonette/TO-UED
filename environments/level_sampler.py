@@ -45,7 +45,7 @@ class LevelBuffer:
             )
 
         return jax.vmap(_create_level)(
-            params, lifetimes, jnp.arange(lifetimes.shape[0])
+            params, lifetimes, jnp.arange(lifetimes.shape[0], dtype=int)
         )
 
     def __len__(self):

@@ -5,7 +5,7 @@ from jax import random
 from rich.traceback import install
 
 from util import *
-from environments.new_sampler import LevelSampler
+from environments.gd_sampler import GDSampler as LevelSampler
 from experiments.parse_args import parse_args
 from experiments.logging import init_logger, log_results
 from meta.meta import create_lpg_train_state, make_lpg_train_step
@@ -14,27 +14,23 @@ from meta.meta import create_lpg_train_state, make_lpg_train_step
 def make_train(args):
     def _train_fn(rng):
         # --- Initialize LPG and level sampler ---
-        rng, lpg_rng, buffer_rng, eval_buffer_rng = jax.random.split(rng, 4)
+        rng, lpg_rng, buffer_rng = jax.random.split(rng, 3)
         train_state = create_lpg_train_state(lpg_rng, args)
         level_sampler = LevelSampler(args)
-        level_buffer = level_sampler.initialize_buffer(buffer_rng)
-        eval_buffer = level_sampler.initialize_buffer(eval_buffer_rng)
-        eval_buffer = eval_buffer.replace(
-            active= jnp.full_like(eval_buffer.active, True)
-        )
+        level_buffer, eval_buffer = level_sampler.initialize_buffer(buffer_rng)
 
         # --- Initialze agents and value critics ---
         require_value_critic = not args.use_es
-        rng, _rng = jax.random.split(rng)
-        level_buffer, agent_states, value_critic_states, train_sample_dist = level_sampler.initial_sample(
-            _rng, level_buffer, args.num_agents, require_value_critic
+        rng, train_rng = jax.random.split(rng)
+        level_buffer, agent_states, value_critic_states = level_sampler.initial_sample(
+            train_rng, level_buffer, args.num_agents, require_value_critic
         )
 
         # --- TRAIN LOOP ---
         lpg_train_step_fn = make_lpg_train_step(args, level_sampler)
 
-        def _meta_train_loop(carry, _):
-            rng, train_state, agent_states, value_critic_states, level_buffer, eval_buffer, train_sample_dist = carry
+        def _meta_train_loop(carry, t):
+            rng, train_state, agent_states, value_critic_states, level_buffer, eval_buffer, x_grad, y_grad = carry
 
             # --- Update LPG ---
             rng, _rng = jax.random.split(rng)
@@ -47,16 +43,26 @@ def make_train(args):
 
             # --- Sample new levels and agents as required ---
             rng, _rng = jax.random.split(rng)
-            level_buffer, eval_buffer, agent_states, value_critic_states, train_sample_dist = level_sampler.sample(
-                _rng, level_buffer, agent_states, value_critic_states, eval_buffer, train_state, train_sample_dist
+
+            def sample(*_):
+                return level_sampler.sample(
+                    rng, train_state, level_buffer, eval_buffer, x_grad, y_grad, agent_states, value_critic_states
+                )
+            def identity(*_):
+                return level_buffer, eval_buffer, x_grad, y_grad, agent_states, value_critic_states
+            
+            level_buffer, eval_buffer, x_grad, y_grad, agent_states, value_critic_states = jax.lax.cond(
+                t % args.regret_frequency == 0, sample, identity
             )
-            carry = (rng, train_state, agent_states, value_critic_states, level_buffer, eval_buffer, train_sample_dist)
+
+            carry = (rng, train_state, agent_states, value_critic_states, level_buffer, eval_buffer, x_grad, y_grad)
             return carry, metrics
 
         # --- Stack and return metrics ---
-        carry = (rng, train_state, agent_states, value_critic_states, level_buffer, eval_buffer, train_sample_dist)
+        zeros = jnp.zeros_like(level_buffer.score)
+        carry = (rng, train_state, agent_states, value_critic_states, level_buffer, eval_buffer, zeros, zeros)
         carry, metrics = jax.lax.scan(
-            _meta_train_loop, carry, None, length=10 # args.train_steps
+            _meta_train_loop, carry, jnp.arange(args.train_steps), args.train_steps
         )
         return metrics, train_state, level_buffer
 
