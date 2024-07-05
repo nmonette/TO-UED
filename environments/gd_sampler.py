@@ -10,10 +10,11 @@ from .environments import reset_env_params
 
 
 class GDSampler(LevelSampler):
-    def __init__(self, args):
+    def __init__(self, args, fixed_eval = None):
         super().__init__(args)
         self.args = args
         self.lpg_hypers = LpgHyperparams.from_run_args(args)
+        self.fixed_eval = fixed_eval
 
     @partial(jax.vmap, in_axes=(None, 0, None))
     def _sample_env_params(self, rng, env_mode = None):
@@ -79,15 +80,17 @@ class GDSampler(LevelSampler):
         old_value_critics = None
     ):
         # --- Calculate train and eval distributions ---
-        x = projection_simplex_truncated(train_buffer.score + 0.001 * prev_x_grad, 1e-6)
-        y = projection_simplex_truncated(eval_buffer.score + 0.001 * prev_y_grad, 1e-6)
+        x = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * prev_x_grad, self.args.ogd_trunc_size)
+        y = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * prev_y_grad, self.args.ogd_trunc_size)
        
         batch_size = self.args.num_agents
         rng, _rng, eval_rng = jax.random.split(rng, 3)
         score_rng = jax.random.split(_rng, batch_size)
 
         new_train = train_buffer.replace(score=x)
-        new_eval = eval_buffer.replace(score=y)
+        new_eval = eval_buffer.replace(
+            score=jax.lax.select(self.fixed_eval is None, y, self.fixed_eval)
+        ) 
         
         # --- Sample levels ---
         rng, x_rng, y_rng = jax.random.split(rng, 3)
@@ -131,11 +134,11 @@ class GDSampler(LevelSampler):
 
         # --- Update buffers for next round of sampling ---
         train_buffer = train_buffer.replace(
-            score = projection_simplex_truncated(train_buffer.score + 0.001 * x_grad, 1e-6),
+            score = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * x_grad, self.args.ogd_trunc_size),
             new = train_buffer.new.at[train_levels.buffer_id].set(False)
         ) 
         eval_buffer = eval_buffer.replace(
-            score = projection_simplex_truncated(eval_buffer.score + 0.001 * y_grad, 1e-6),
+            score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),
             new = train_buffer.new.at[eval_levels.buffer_id].set(False)
         )
 

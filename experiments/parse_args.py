@@ -18,8 +18,9 @@ def parse_args(cmd_args=sys.argv[1:]):
     parser.add_argument(
         "--env_mode", help="Environment mode", type=str, default="all_shortlife"
     )
+    # TODO: change this to mazes when mazes are fixed
     parser.add_argument(
-        "--eval_env_mode", help="Environment mode for eval levels", default="all_shortlife"
+        "--eval_env_mode", help="Environment mode for eval levels", default="all_shortlife" 
     )
     parser.add_argument(
         "--env_workers",
@@ -27,7 +28,6 @@ def parse_args(cmd_args=sys.argv[1:]):
         type=int,
         default=64,
     )
-
     # --- EXPERIMENT ---
     # Settings
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
@@ -53,15 +53,6 @@ def parse_args(cmd_args=sys.argv[1:]):
         default=1,
     )
 
-    # Double Oracle
-    parser.add_argument(
-        "-br",
-        "--best-response-length",
-        help="Number of best response iterates, must be multiple of 20",
-        dest="br", 
-        default=10, 
-        type=int
-    )
     # Logging
     parser.add_argument("--log", action="store_true", help="Log with WandB")
     parser.add_argument("--wandb_project", type=str, help="Wandb project")
@@ -207,6 +198,14 @@ def parse_args(cmd_args=sys.argv[1:]):
     )
     parser.add_argument(
         "--num_regret_updates", help="Number of regret updates to VMAP when using the regret vmap heuristic", type=int, default=32
+    )
+
+    # Optimistic Gradient Descent
+    parser.add_argument(
+        "--ogd_learning_rate", help="Stepsize for GDSampler", type=float, default=0.001
+    )
+    parser.add_argument(
+        "--ogd_trunc_size", help="Truncation size for projection onto Truncated Simplex", type=float, default=1e-6
     )
 
     args, rest_args = parser.parse_known_args(cmd_args)
