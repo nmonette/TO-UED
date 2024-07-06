@@ -125,15 +125,6 @@ class GDSampler(LevelSampler):
         rng, _rng = jax.random.split(rng)
         agent_states, new_value_critics = train_agent_fn(_rng, train_levels, old_value_critics is not None)
 
-        # # --- Initialise new value critics (if required) ---
-        # new_value_critics = None
-        # if old_value_critics is not None:
-        #     rng, _rng = jax.random.split(rng)
-        #     _rng = jax.random.split(_rng, batch_size)
-        #     new_value_critics = jax.vmap(create_value_critic, in_axes=(0, None, None))(
-        #         _rng, self.agent_hypers, self.obs_shape
-        #     )
-
         # --- Hack to fix function mismatch ---
         agent_states = agent_states.replace(
             critic_state=agent_states.critic_state.replace(
