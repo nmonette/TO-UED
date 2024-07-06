@@ -1,6 +1,7 @@
 """
 Maze designs lifted from MiniMax, https://github.com/minqi/minimax
 """
+import jax
 import jax.numpy as jnp
 
 sixteen_rooms = [
@@ -147,17 +148,25 @@ small_corridor = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 ]
 
-def _to_wall_idxs(maze):
-    return jnp.array([i for i, x in enumerate(maze) if x == 1], dtype=jnp.int32)
+STATIC_MAZE_DESIGNS = {
+    'sixteen_rooms': jnp.array(sixteen_rooms, dtype=jnp.int32),
+    'sixteen_rooms_2': jnp.array(sixteen_rooms_2, dtype=jnp.int32),
+    'labyrinth': jnp.array(labyrinth, dtype=jnp.int32),
+    'labyrinth_flipped': jnp.array(labyrinth_flipped, dtype=jnp.int32),
+    'labyrinth_2': jnp.array(labyrinth_2, dtype=jnp.int32),
+    'standard_maze': jnp.array(standard_maze, dtype=jnp.int32),
+    'standard_maze_2': jnp.array(standard_maze_2, dtype=jnp.int32),
+    'standard_maze_3': jnp.array(standard_maze_3, dtype=jnp.int32),
+    'small_corridor': jnp.array(small_corridor, dtype=jnp.int32),
+}
+
+def _make_maze_sampler():
+    mazes = jnp.stack(list(STATIC_MAZE_DESIGNS.values()))
+    def _sample_maze(rng):
+        return mazes[jax.random.randint(rng, (), 0, len(mazes))]
+    return _sample_maze
 
 MAZE_DESIGNS = {
-    'sixteen_rooms': _to_wall_idxs(sixteen_rooms),
-    'sixteen_rooms_2': _to_wall_idxs(sixteen_rooms_2),
-    'labyrinth': _to_wall_idxs(labyrinth),
-    'labyrinth_flipped': _to_wall_idxs(labyrinth_flipped),
-    'labyrinth_2': _to_wall_idxs(labyrinth_2),
-    'standard_maze': _to_wall_idxs(standard_maze),
-    'standard_maze_2': _to_wall_idxs(standard_maze_2),
-    'standard_maze_3': _to_wall_idxs(standard_maze_3),
-    'small_corridor': _to_wall_idxs(small_corridor),
+    **STATIC_MAZE_DESIGNS,
+    'mazes': _make_maze_sampler(),
 }
