@@ -18,9 +18,11 @@ def parse_args(cmd_args=sys.argv[1:]):
     parser.add_argument(
         "--env_mode", help="Environment mode", type=str, default="all_shortlife"
     )
-    # TODO: change this to mazes when mazes are fixed
     parser.add_argument(
-        "--eval_env_mode", help="Environment mode for eval levels", default="all_shortlife" 
+        "--eval_env_name", help="Environment name for eval levels", type=str, default="GridWorld-v0"
+    )
+    parser.add_argument(
+        "--eval_env_mode", help="Environment mode for eval levels", default="mazes" 
     )
     parser.add_argument(
         "--env_workers",

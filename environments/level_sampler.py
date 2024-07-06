@@ -445,6 +445,24 @@ class LevelSampler:
             active=level_buffer.active.at[reset_ids].set(False),
             new=level_buffer.active.at[reset_ids].set(True),
         )
+    
+    def agent_state_from_levels(self, rng, levels: Level, value_critic=False):
+         # --- Initialise new agents and environment workers ---
+        batch_size = levels.buffer_id.shape[0]
+        rng, _rng = jax.random.split(rng)
+        _rng = jax.random.split(_rng, batch_size)
+        agent_states = jax.vmap(self._create_agent)(_rng, levels)
+
+        # --- Initialise new value critics (if required) ---
+        new_value_critics = None
+        if value_critic:
+            rng, _rng = jax.random.split(rng)
+            _rng = jax.random.split(_rng, batch_size)
+            new_value_critics = jax.vmap(create_value_critic, in_axes=(0, None, None))(
+                _rng, self.agent_hypers, self.obs_shape
+            )
+
+        return agent_states, new_value_critics
 
     def _replay_from_buffer(
         self, rng: chex.PRNGKey, level_buffer: LevelBuffer, batch_size: int

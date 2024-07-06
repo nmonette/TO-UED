@@ -6,7 +6,6 @@ from .level_sampler import LevelSampler, LevelBuffer
 from util import *
 from agents.lpg_agent import train_lpg_agent
 from agents.agents import create_value_critic
-from .environments import reset_env_params
 
 
 class GDSampler(LevelSampler):
@@ -16,39 +15,12 @@ class GDSampler(LevelSampler):
         self.lpg_hypers = LpgHyperparams.from_run_args(args)
         self.fixed_eval = fixed_eval
 
-    @partial(jax.vmap, in_axes=(None, 0, None))
-    def _sample_env_params(self, rng, env_mode = None):
-        """Sample a batch of environment parameters and agent lifetimes."""
-        if env_mode is None:
-            env_mode = self.env_mode
-        return reset_env_params(rng, self.env_name, env_mode)
-    
-    def _sample_random_levels(self, rng: chex.PRNGKey, batch_size: int):
-        rng = jax.random.split(rng, batch_size)
-        new_params, new_lifetimes = self._sample_env_params(rng, None)
-        # TODO: figure out why the buffer id's are all zeros here (idk)
-        return Level(new_params, new_lifetimes, jnp.zeros(batch_size, dtype=int))
-
-    def initialize_buffer(self, rng):
-        """Creates a new level buffer, if used by the score function."""
-        train_rng, eval_rng = jax.random.split(rng)
-        train_rng = jax.random.split(train_rng, self.buffer_size)
-        random_params, random_lifetimes = self._sample_env_params(train_rng, self.args.env_mode)
-        train_buffer = LevelBuffer.create_buffer(random_params, random_lifetimes)
-
-        eval_rng = jax.random.split(eval_rng, self.buffer_size)
-        random_params, random_lifetimes = self._sample_env_params(eval_rng, self.args.eval_env_mode)
-        eval_buffer = LevelBuffer.create_buffer(random_params, random_lifetimes)
-
-        return train_buffer, eval_buffer
-
     def _sample_actions(
         self, 
         rng, 
         buffer,
         batch_size
     ):
-        
         @partial(jax.grad, has_aux=True)
         def sample_action(policy, _rng, bern, buffer):
             unseen_total = buffer.new.sum()
@@ -70,6 +42,7 @@ class GDSampler(LevelSampler):
     
     def sample(
         self, 
+        train_agent_fn,
         rng, 
         train_state,
         train_buffer, 
@@ -88,9 +61,15 @@ class GDSampler(LevelSampler):
         score_rng = jax.random.split(_rng, batch_size)
 
         new_train = train_buffer.replace(score=x)
-        new_eval = eval_buffer.replace(
-            score=jax.lax.select(self.fixed_eval is None, y, self.fixed_eval)
+
+        if self.fixed_eval is None:
+            new_eval = eval_buffer.replace(
+            score=y
         ) 
+        else:
+            new_eval = eval_buffer.replace(
+                score=self.fixed_eval
+            ) 
         
         # --- Sample levels ---
         rng, x_rng, y_rng = jax.random.split(rng, 3)
@@ -135,26 +114,25 @@ class GDSampler(LevelSampler):
         # --- Update buffers for next round of sampling ---
         train_buffer = train_buffer.replace(
             score = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * x_grad, self.args.ogd_trunc_size),
-            new = train_buffer.new.at[train_levels.buffer_id].set(False)
+            new = train_buffer.new.at[x_level_ids].set(False)
         ) 
         eval_buffer = eval_buffer.replace(
             score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),
-            new = train_buffer.new.at[eval_levels.buffer_id].set(False)
+            new = train_buffer.new.at[y_level_ids].set(False)
         )
 
         # --- Initialise new agents and environment workers ---
         rng, _rng = jax.random.split(rng)
-        _rng = jax.random.split(_rng, batch_size)
-        agent_states = jax.vmap(self._create_agent)(_rng, train_levels)
+        agent_states, new_value_critics = train_agent_fn(_rng, train_levels, old_value_critics is not None)
 
-        # --- Initialise new value critics (if required) ---
-        new_value_critics = None
-        if old_value_critics is not None:
-            rng, _rng = jax.random.split(rng)
-            _rng = jax.random.split(_rng, batch_size)
-            new_value_critics = jax.vmap(create_value_critic, in_axes=(0, None, None))(
-                _rng, self.agent_hypers, self.obs_shape
-            )
+        # # --- Initialise new value critics (if required) ---
+        # new_value_critics = None
+        # if old_value_critics is not None:
+        #     rng, _rng = jax.random.split(rng)
+        #     _rng = jax.random.split(_rng, batch_size)
+        #     new_value_critics = jax.vmap(create_value_critic, in_axes=(0, None, None))(
+        #         _rng, self.agent_hypers, self.obs_shape
+        #     )
 
         # --- Hack to fix function mismatch ---
         agent_states = agent_states.replace(
