@@ -124,7 +124,7 @@ class GDSampler(LevelSampler):
             self._compute_algorithmic_regret, self.num_mini_batches
         )(score_rng, agents)
         
-        eval_dist = jnp.unique(agents.level.buffer_id, return_counts=True, size=len(agents.level.buffer_id))[1]
+        eval_dist = jnp.unique(y_level_ids, return_counts=True, size=len(agents.level.buffer_id))[1]
         eval_dist = eval_dist / eval_dist.sum()
 
         eval_regret = jnp.dot(eval_dist, eval_regrets)
