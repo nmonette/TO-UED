@@ -75,7 +75,7 @@ class RolloutWrapper:
                 new_cum_reward,
                 new_valid_mask,
             ]
-            transition = Transition(obs, action, reward, next_obs, done)
+            transition = Transition(obs, action, reward, next_obs, done, jnp.log(action_probs[action]))
             if self.return_info:
                 return carry, (transition, info)
             return carry, transition

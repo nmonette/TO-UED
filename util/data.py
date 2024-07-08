@@ -41,6 +41,7 @@ class Transition:
     reward: jnp.ndarray
     next_obs: jnp.ndarray
     done: jnp.ndarray
+    log_prob: jnp.ndarray
 
 
 @struct.dataclass
