@@ -122,4 +122,4 @@ def compute_val_adv_target(critic_state, rollout, gamma, gae_lambda):
     adv, target = jax.lax.stop_gradient(
         gae(value, rollout.reward, rollout.done, gamma, gae_lambda)
     )
-    return adv, value, adv + value
+    return adv, value, target

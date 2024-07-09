@@ -125,7 +125,7 @@ def lpg_meta_grad_train_step(
     )(rng, agent_states, value_critic_states)
 
     # --- Accumulate gradients and update LPG ---
-    lpg_grad, metrics = jax.tree_map(lambda x: x.mean(axis=0), (lpg_grad, metrics))
+    lpg_grad, metrics = jax.tree_util.tree_map(lambda x: x.mean(axis=0), (lpg_grad, metrics))
     lpg_train_state = lpg_train_state.apply_gradients(grads=lpg_grad)
     return lpg_train_state, agent_states, value_critic_states, metrics
 

@@ -27,14 +27,15 @@ def mini_batch_vmap(f, num_mini_batches):
     Enables execution of batches too large to fit in memory.
     """
 
-    def mapped_fn(*args):
-        def batched_fn(_, x):
-            return None, jax.vmap(f)(*x)
+    def mapped_fn(*args, **kwargs):
+        def batched_fn(_, args):
+            args, kwargs = args
+            return None, jax.vmap(f)(*args, **kwargs)
 
-        mini_batched_args = jax.tree_map(
-            lambda x: x.reshape((num_mini_batches, -1, *x.shape[1:])), args
-        )
-        _, ret = jax.lax.scan(batched_fn, None, mini_batched_args)
-        return jax.tree_map(lambda x: x.reshape((-1, *x.shape[2:])), ret)
+        reshape_fn = lambda x: x.reshape((num_mini_batches, -1, *x.shape[1:]))
+        mini_batched_args = jax.tree_util.tree_map(reshape_fn, args)
+        mini_batched_kwargs = jax.tree_util.tree_map(reshape_fn, kwargs)
+        _, ret = jax.lax.scan(batched_fn, None, (mini_batched_args, mini_batched_kwargs))
+        return jax.tree_util.tree_map(lambda x: x.reshape((-1, *x.shape[2:])), ret)
 
     return mapped_fn

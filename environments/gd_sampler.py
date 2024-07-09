@@ -122,6 +122,7 @@ class GDSampler(LevelSampler):
         )
 
         # --- Initialise new agents and environment workers ---
+        ## NOTE: `train_agent_fn` is a function from `dummy_sampler` that turns levels in to agents
         rng, _rng = jax.random.split(rng)
         agent_states, new_value_critics = train_agent_fn(_rng, train_levels, old_value_critics is not None)
 

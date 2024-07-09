@@ -68,6 +68,10 @@ class GridWorld(environment.Environment):
             obj_p_terminate = jnp.array([0.0, 0.5, 0.0]),
             obj_p_respawn = jnp.array([0.05, 0.1, 0.5]),
         )
+    
+    def discount(self, state: EnvState, params: EnvParams) -> float:              
+        """Return a discount of zero if the episode has terminated."""              
+        return jax.lax.select(self.is_terminal(state, params).squeeze(), 0.0, 1.0) 
 
     def step_env(
         self, key: chex.PRNGKey, state: EnvState, action: int, params: EnvParams
@@ -124,7 +128,8 @@ class GridWorld(environment.Environment):
 
         # Compute done
         state = EnvState(time, pos, obj_poss, obj_existss, term)
-        done = self.is_terminal(state, params)
+
+        done = self.is_terminal(state, params).squeeze()
         info = {"discount": self.discount(state, params)}
 
         return (
@@ -176,7 +181,7 @@ class GridWorld(environment.Environment):
             time=0,
             pos=pos,
             obj_poss=obj_poss,
-            obj_existss=jnp.arange(self.max_n_objs) < params.n_objs,
+            obj_existss=(jnp.arange(self.max_n_objs) < params.n_objs),
             early_term=False,
         )
         return self.get_obs(state), state

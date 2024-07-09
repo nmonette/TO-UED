@@ -22,7 +22,7 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--eval_env_name", help="Environment name for eval levels", type=str, default="GridWorld-v0"
     )
     parser.add_argument(
-        "--eval_env_mode", help="Environment mode for eval levels", default="mazes" 
+        "--eval_env_mode", help="Environment mode for eval levels", default="all_shortlife" 
     )
     parser.add_argument(
         "--env_workers",
@@ -49,7 +49,7 @@ def parse_args(cmd_args=sys.argv[1:]):
         default=16,
     )
     parser.add_argument(
-        "--regret-frequency",
+        "--regret_frequency",
         help="Number of meta-training iterations before another regret update",
         type=int,
         default=1,
@@ -208,6 +208,20 @@ def parse_args(cmd_args=sys.argv[1:]):
     )
     parser.add_argument(
         "--ogd_trunc_size", help="Truncation size for projection onto Truncated Simplex", type=float, default=1e-6
+    )
+
+    # --- PPO ---
+    parser.add_argument(
+        "--clip_eps", help="Epsilon for gradient clipping (PPO)", type=float, default=0.2
+    )
+    parser.add_argument(
+        "--critic_coeff", help="Value coefficient for PPO loss", type=float, default=0.5
+    )
+    parser.add_argument(
+        "--ppo_entropy_coeff",  help="Entropy coefficient for PPO loss", type=float, default=1e-3
+    )
+    parser.add_argument(
+        "--num_epochs", help="Number of epochs for PPO training", type=int, default=5
     )
 
     args, rest_args = parser.parse_known_args(cmd_args)

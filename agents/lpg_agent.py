@@ -137,4 +137,4 @@ def train_lpg_agent(
         length=num_train_steps,
     )
     _, agent_state = carry_out
-    return agent_state, rollout, jax.tree_map(jnp.mean, metrics)
+    return agent_state, rollout, jax.tree_util.tree_map(jnp.mean, metrics)

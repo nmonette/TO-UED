@@ -2,10 +2,8 @@ import jax
 import jax.numpy as jnp
 import chex
 
-from .level_sampler import LevelSampler, LevelBuffer
+from .level_sampler import LevelSampler
 from util import *
-from agents.lpg_agent import train_lpg_agent
-from agents.agents import create_value_critic
 
 
 class GDSampler(LevelSampler):
@@ -14,6 +12,19 @@ class GDSampler(LevelSampler):
         self.args = args
         self.lpg_hypers = LpgHyperparams.from_run_args(args)
         self.fixed_eval = fixed_eval
+
+    def _create_eval_agent(self, rng, level, actor_state, critic_state=None):
+        """Initialise an agent on the given level."""
+        env_obs, env_state = self.rollout_manager.batch_reset(
+            rng, level.env_params, self.env_workers
+        )
+        return AgentState(
+            actor_state=actor_state,
+            critic_state=critic_state,
+            level=level,
+            env_obs=env_obs,
+            env_state=env_state,
+        )
 
     def _sample_actions(
         self, 
@@ -42,15 +53,13 @@ class GDSampler(LevelSampler):
     
     def sample(
         self, 
-        train_agent_fn,
         rng, 
-        train_state,
         train_buffer, 
         eval_buffer,
         prev_x_grad,
         prev_y_grad,
-        old_agents, 
-        old_value_critics = None
+        actor_state, 
+        critic_state,
     ):
         # --- Calculate train and eval distributions ---
         x = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * prev_x_grad, self.args.ogd_trunc_size)
@@ -80,30 +89,16 @@ class GDSampler(LevelSampler):
         eval_levels = jax.tree_util.tree_map(lambda x: x[y_level_ids], eval_buffer.level)
 
         agent_rng = jax.random.split(eval_rng, batch_size)
-        eval_agents = jax.vmap(self._create_agent)(agent_rng, eval_levels)
+    
+        eval_agents = jax.vmap(self._create_eval_agent, in_axes=(0, 0, None, None))(agent_rng, eval_levels, actor_state, critic_state)
 
         rng, _rng = jax.random.split(rng)
-        train_rng = jax.random.split(rng, batch_size)
-
-        # --- Get eval regret scores ---
-        agents, _, _  = mini_batch_vmap(
-            lambda r, a: train_lpg_agent(
-                r,
-                train_state,
-                a,
-                self.rollout_manager,
-                self.lpg_hypers.num_agent_updates,
-                self.lpg_hypers.agent_target_coeff), 
-            self.num_mini_batches,)(
-            train_rng, 
-            eval_agents,
-        )
         
         eval_regrets = mini_batch_vmap(
             self._compute_algorithmic_regret, self.num_mini_batches
-        )(score_rng, agents)
+        )(score_rng, eval_agents)
         
-        eval_dist = jnp.unique(y_level_ids, return_counts=True, size=len(agents.level.buffer_id))[1]
+        eval_dist = jnp.unique(y_level_ids, return_counts=True, size=len(eval_agents.level.buffer_id))[1]
         eval_dist = eval_dist / eval_dist.sum()
 
         eval_regret = jnp.dot(eval_dist, eval_regrets)
@@ -120,23 +115,4 @@ class GDSampler(LevelSampler):
             score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),
             new = train_buffer.new.at[y_level_ids].set(False)
         )
-
-        # --- Initialise new agents and environment workers ---
-        rng, _rng = jax.random.split(rng)
-        agent_states, new_value_critics = train_agent_fn(_rng, train_levels, old_value_critics is not None)
-
-        # --- Hack to fix function mismatch ---
-        agent_states = agent_states.replace(
-            critic_state=agent_states.critic_state.replace(
-                tx=old_agents.critic_state.tx, apply_fn=old_agents.critic_state.apply_fn
-            ),
-            actor_state=agent_states.actor_state.replace(
-                tx=old_agents.actor_state.tx, apply_fn=old_agents.actor_state.apply_fn
-            ),
-        )
-        if new_value_critics is not None:
-            new_value_critics = new_value_critics.replace(
-                tx=old_value_critics.tx, apply_fn=old_value_critics.apply_fn
-            )
-
-        return train_buffer, eval_buffer, x_grad, y_grad, agent_states, new_value_critics
+        return train_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad
