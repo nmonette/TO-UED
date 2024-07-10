@@ -35,7 +35,7 @@ def agent_train_step(
         # --- Forward pass through policy network ---
         all_action_probs = actor_state.apply_fn({"params": actor_params}, rollout.obs)
 
-        pi = jax.vmap(jax.vmap(jax.vmap(selected_action_probs)))(all_action_probs, rollout.action)
+        pi = jax.vmap(selected_action_probs)(all_action_probs, rollout.action)
         entropy = jax.scipy.special.entr(pi).mean()
         lp = jnp.log(pi)
 
@@ -53,6 +53,7 @@ def agent_train_step(
         # --- Calculate actor loss ---
         ratio = jnp.exp(lp - rollout.log_prob)[..., jnp.newaxis]
         A = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
         loss_actor1 = ratio * A
         loss_actor2 = (
             jnp.clip(
@@ -147,12 +148,13 @@ def train_agent(
             return (actor_state, critic_state), metrics
         
         rng, _rng = jax.random.split(rng)
-        perm = jax.random.permutation(_rng, rollout.obs.shape[1])
+        perm = jax.random.permutation(_rng, rollout.obs.shape[0] * rollout.obs.shape[1] * rollout.obs.shape[2])
 
-        # TODO: fix permutation
-        minibatch_fn = lambda x: jnp.take(x, perm, axis=1) \
-        .reshape(x.shape[0], num_mini_batches, -1, *x.shape[2:]) \
-        .swapaxes(0, 1)
+        minibatch_fn = lambda x: jnp.take(
+            x.reshape(-1, *x.shape[3:]),
+            perm,
+            axis=0
+        ).reshape(num_mini_batches, -1, *x.shape[3:])
 
         minibatches = (
             jax.tree_map(minibatch_fn, rollout),
