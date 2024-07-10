@@ -1,4 +1,5 @@
 # Some code taken from https://github.com/DramaCow/jaxued/blob/main/examples/maze_plr.py
+# Some code taken from https://github.com/luchris429/purejaxrl/blob/main/purejaxrl/ppo.py
 
 import jax
 import jax.numpy as jnp
@@ -31,27 +32,50 @@ def agent_train_step(
         return gather(all_action_probs, rollout_action)
     
     def loss_fn(actor_params, critic_params):
+        # --- Forward pass through policy network ---
         all_action_probs = actor_state.apply_fn({"params": actor_params}, rollout.obs)
 
         pi = jax.vmap(jax.vmap(jax.vmap(selected_action_probs)))(all_action_probs, rollout.action)
         entropy = jax.scipy.special.entr(pi).mean()
-        values_pred = critic_state.apply_fn({"params": critic_params}, rollout.obs)
         lp = jnp.log(pi)
+
+        # --- Forward pass through value network ---    
+        values_pred = critic_state.apply_fn({"params": critic_params}, rollout.obs)
         
-        ratio = jnp.exp(lp - rollout.log_prob)[..., jnp.newaxis]
-
-        A = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
-        l_clip = (-jnp.minimum(ratio * A, jnp.clip(ratio, 1-clip_eps, 1 + clip_eps) * A)).mean()
-    
+        # --- Calculate value loss ---
         values_pred_clipped = values + (values_pred - values).clip(-clip_eps, clip_eps)
-        l_vf = 0.5 * jnp.maximum((values_pred - targets) ** 2, (values_pred_clipped - targets) ** 2).mean()
+        value_losses = jnp.square(values - targets)
+        value_losses_clipped = jnp.square(values_pred_clipped - targets)
+        value_loss = (
+            0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
+        )
 
-        loss = l_clip + critic_coeff * l_vf - entropy_coeff * entropy
+        # --- Calculate actor loss ---
+        ratio = jnp.exp(lp - rollout.log_prob)[..., jnp.newaxis]
+        A = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        loss_actor1 = ratio * A
+        loss_actor2 = (
+            jnp.clip(
+                ratio,
+                1 - clip_eps,
+                1 + clip_eps,
+            )
+            * A
+        )
+        loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
+        loss_actor = loss_actor.mean()
+
+        loss = (
+            loss_actor
+            + critic_coeff * value_loss
+            + entropy_coeff * entropy
+        )
 
         metrics = {
             "ppo_loss": loss,
-            "ppo_value_loss": l_vf,
-            "clipped_loss": l_clip,
+            "ppo_value_loss": value_loss,
+            "unclipped_policy_loss": loss_actor1,
+            "clipped_policy_loss": loss_actor2,
             "policy_entropy": entropy
         }
 
