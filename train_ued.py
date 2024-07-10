@@ -5,17 +5,14 @@ from rich.traceback import install
 from ued.gd_sampler import GDSampler
 from ued.level_sampler import LevelSampler
 from ued.train import train_agent
+from ued.rnn import eval_agent, Actor
 from experiments.parse_args import parse_args
 from experiments.logging import init_logger, log_results
 from util.jax import jax_debug_wrapper
-from agents.agents import eval_agent
+from ued.rnn import eval_agent
 
 from functools import partial
 import sys
-import os
-
-# os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".99"
-
 
 def make_train(args, eval_args):
     def _train_fn(rng):
@@ -87,13 +84,16 @@ def make_train(args, eval_args):
             rng, _rng = jax.random.split(rng)
             idx = jnp.argmax(eval_buffer.score)
             eval_level = jax.tree_util.tree_map(lambda x: x[idx], eval_buffer.level)
+
+            hstates = Actor.initialize_carry((args.env_workers, ))
             
             metrics["agent_return_on_adversarial_level"] = eval_agent(
                 _rng, 
                 level_sampler.rollout_manager, 
                 eval_level.env_params,
                 actor_state,
-                args.env_workers
+                args.env_workers, 
+                hstates
             )
             
             carry = (rng, actor_state, critic_state, level_buffer, eval_buffer, \
@@ -140,5 +140,5 @@ def main(cmd_args=sys.argv[1:]):
 
 
 if __name__ == "__main__":
-    install()
+    # install()
     main()

@@ -12,13 +12,15 @@ from typing import Callable
 
 from util import *
 from environments.environments import get_env, reset_env_params, get_env_spec
-from environments.rollout import RolloutWrapper
+from environments.rollout import RolloutWrapper as DummyRollout
+from environments.level_sampler import LevelSampler as DummySampler
+from .rollout import RolloutWrapper
 from agents.agents import (
-    create_agent,
-    create_value_critic,
+    create_agent_rnn,
     eval_agent,
     AgentHyperparams,
 )
+from .rnn import eval_agent as eval_rnn_agent, Actor
 from agents.a2c import train_a2c_agent, A2CHyperparams
 
 
@@ -70,6 +72,9 @@ class LevelSampler:
         self.rollout_manager = RolloutWrapper(
             self.env_name, args.train_rollout_len, self.max_rollout_len, self.env_kwargs
         )
+        self.dummy_rollout = DummyRollout(
+            self.env_name, args.train_rollout_len, self.max_rollout_len, self.env_kwargs
+        )
         self.agent_hypers = AgentHyperparams.from_args(args)
 
         # --- Save sampler parameters ---
@@ -109,7 +114,6 @@ class LevelSampler:
         rng: chex.PRNGKey,
         level_buffer: LevelBuffer,
         batch_size: int,
-        create_value_critics: bool,
     ):
         """Sample random initial levels and agents."""
         # --- Sample initial levels ---
@@ -126,14 +130,7 @@ class LevelSampler:
         rng, _rng = random.split(rng)
         _rng = random.split(_rng, batch_size)
         agent_states = jax.vmap(self._create_agent)(_rng, levels)
-        value_critics = None
-        if create_value_critics:
-            rng, _rng = jax.random.split(rng)
-            _rng = jax.random.split(_rng, batch_size)
-            value_critics = jax.vmap(create_value_critic, in_axes=(0, None, None))(
-                _rng, self.agent_hypers, self.obs_shape
-            )
-        return level_buffer, agent_states, value_critics
+        return level_buffer, agent_states
     
     def loop_eval(
         self,
@@ -198,7 +195,6 @@ class LevelSampler:
         rng: chex.PRNGKey,
         level_buffer: LevelBuffer,
         old_agents: AgentState,
-        old_value_critics: TrainState,
     ):
         """Update level buffer and sample new levels for terminated agents."""
         # --- Identify terminated agents ---
@@ -332,15 +328,6 @@ class LevelSampler:
         _rng = random.split(_rng, batch_size)
         agent_states = jax.vmap(self._create_agent)(_rng, new_levels)
 
-        # --- Initialise new value critics (if required) ---
-        new_value_critics = None
-        if old_value_critics is not None:
-            rng, _rng = jax.random.split(rng)
-            _rng = jax.random.split(_rng, batch_size)
-            new_value_critics = jax.vmap(create_value_critic, in_axes=(0, None, None))(
-                _rng, self.agent_hypers, self.obs_shape
-            )
-
         # --- Return updated level buffer and agents ---
         # TODO: Had a function mismatch error without the below hack, need to investigate further.
         agent_states = agent_states.replace(
@@ -351,13 +338,9 @@ class LevelSampler:
                 tx=old_agents.actor_state.tx, apply_fn=old_agents.actor_state.apply_fn
             ),
         )
-        if new_value_critics is not None:
-            new_value_critics = new_value_critics.replace(
-                tx=old_value_critics.tx, apply_fn=old_value_critics.apply_fn
-            )
+
         agent_states = jax.tree_util.tree_map(term_mask_fn, agent_states, old_agents)
-        value_critics = jax.tree_util.tree_map(term_mask_fn, new_value_critics, old_value_critics)
-        return level_buffer, agent_states, value_critics
+        return level_buffer, agent_states
 
     def _sample_random_levels(self, rng: chex.PRNGKey, batch_size: int):
         rng = jax.random.split(rng, batch_size)
@@ -373,7 +356,7 @@ class LevelSampler:
         agent_hypers = self.agent_hypers
         if value_critic:
             agent_hypers = agent_hypers.replace(critic_dims=1)
-        actor_state, critic_state = create_agent(
+        actor_state, critic_state = create_agent_rnn(
             agent_rng, agent_hypers, self.num_actions, self.obs_shape
         )
         return AgentState(
@@ -389,8 +372,8 @@ class LevelSampler:
     ):
         # --- Create antagonist (A2C) agent ---
         rng, _rng = jax.random.split(rng)
-        a2c_agent_state = self._create_agent(
-            _rng, lpg_agent_state.level, value_critic=True
+        a2c_agent_state = DummySampler._create_agent(
+            self, _rng, lpg_agent_state.level, value_critic=True
         )
 
         # --- Train antagonist agent ---
@@ -398,7 +381,7 @@ class LevelSampler:
         a2c_agent_state, _ = train_a2c_agent(
             rng=_rng,
             agent_state=a2c_agent_state,
-            rollout_manager=self.rollout_manager,
+            rollout_manager=self.dummy_rollout,
             num_train_steps=self.max_lifetime,
             hypers=self.a2c_hypers,
         )
@@ -406,14 +389,19 @@ class LevelSampler:
         # --- Evaluate LPG and antagonist agents ---
         eval_fn = partial(
             eval_agent,
-            rollout_manager=self.rollout_manager,
+            rollout_manager=self.dummy_rollout,
             num_workers=self.env_workers,
         )
         lpg_rng, a2c_rng = jax.random.split(rng)
-        lpg_agent_return = eval_fn(
+        
+        lpg_rng, _rng = jax.random.split(lpg_rng)
+        lpg_agent_return = eval_rnn_agent(
             rng=lpg_rng,
+            rollout_manager=self.rollout_manager,
+            num_workers=self.env_workers,
             env_params=lpg_agent_state.level.env_params,
-            actor_train_state=lpg_agent_state.actor_state,
+            actor_train_state=lpg_agent_state.actor_state, 
+            init_hstate= Actor.initialize_carry((self.args.env_workers, ))
         )
         a2c_agent_return = eval_fn(
             rng=a2c_rng,
@@ -445,24 +433,6 @@ class LevelSampler:
             active=level_buffer.active.at[reset_ids].set(False),
             new=level_buffer.active.at[reset_ids].set(True),
         )
-    
-    def agent_state_from_levels(self, rng, levels: Level, value_critic=False):
-         # --- Initialise new agents and environment workers ---
-        batch_size = levels.buffer_id.shape[0]
-        rng, _rng = jax.random.split(rng)
-        _rng = jax.random.split(_rng, batch_size)
-        agent_states = jax.vmap(self._create_agent)(_rng, levels)
-
-        # --- Initialise new value critics (if required) ---
-        new_value_critics = None
-        if value_critic:
-            rng, _rng = jax.random.split(rng)
-            _rng = jax.random.split(_rng, batch_size)
-            new_value_critics = jax.vmap(create_value_critic, in_axes=(0, None, None))(
-                _rng, self.agent_hypers, self.obs_shape
-            )
-
-        return agent_states, new_value_critics
 
     def _replay_from_buffer(
         self, rng: chex.PRNGKey, level_buffer: LevelBuffer, batch_size: int

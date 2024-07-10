@@ -8,7 +8,9 @@ from flax.training.train_state import TrainState
 
 from util.data import Transition
 from util.jax import mini_batch_vmap
-from agents.agents import compute_val_adv_target, eval_agent
+from agents.agents import compute_val_adv_target
+from .rnn import Actor, Critic
+
 
 from typing import Any
 from functools import partial
@@ -22,26 +24,25 @@ def agent_train_step(
     targets: jnp.ndarray,
     clip_eps: float,
     critic_coeff: float,
-    entropy_coeff: float
+    entropy_coeff: float,
+    actor_hstate: jnp.ndarray,
 ):
-    
     gather = lambda p,idx: p[idx]
-
     def selected_action_probs(all_action_probs, rollout_action):
         all_action_probs += 1e-8
         return gather(all_action_probs, rollout_action)
     
     def loss_fn(actor_params, critic_params):
         # --- Forward pass through policy network ---
-        all_action_probs = actor_state.apply_fn({"params": actor_params}, rollout.obs)
+        _, all_action_probs = actor_state.apply_fn({"params": actor_params}, (rollout.obs.reshape(1, *rollout.obs.shape), rollout.done.reshape(1, *rollout.done.shape)), actor_hstate)
 
         pi = jax.vmap(selected_action_probs)(all_action_probs, rollout.action)
         entropy = jax.scipy.special.entr(pi).mean()
         lp = jnp.log(pi)
 
         # --- Forward pass through value network ---    
-        values_pred = critic_state.apply_fn({"params": critic_params}, rollout.obs)
-        
+        _, values_pred = critic_state.apply_fn({"params": critic_params}, (rollout.obs.reshape(1, *rollout.obs.shape), rollout.done.reshape(1, *rollout.done.shape)), actor_hstate)
+
         # --- Calculate value loss ---
         values_pred_clipped = values + (values_pred - values).clip(-clip_eps, clip_eps)
         value_losses = jnp.square(values - targets)
@@ -116,12 +117,17 @@ def train_agent(
         rng=rollout_rng,
         env_params=env_params,
         init_obs=init_obs,
-        init_state=init_state
+        init_state=init_state,
+        init_hstates= Actor.initialize_carry(init_obs.shape[:-1])
     )
-
+    critic_hstate = Critic.initialize_carry(rollout.obs.shape[:-2])
     value_fn = partial(compute_val_adv_target, critic_state, gamma=gamma, gae_lambda=gae_lambda)
-    adv, values, target = jax.vmap(jax.vmap(value_fn))(rollout) 
+    adv, values, target = jax.vmap(jax.vmap(value_fn))(rollout=rollout, hstate=critic_hstate) 
     values = values[:,:,:-1]
+
+    print(rollout.obs.shape)
+
+    actor_hstate = Actor.initialize_carry(rollout.obs.shape[:-1])
     
     agent_train_step_fn = partial(
         agent_train_step,
@@ -131,19 +137,20 @@ def train_agent(
     )
 
     def epoch(carry, _):
-        rng, actor_state, critic_state, rollout, values, adv, target = carry
+        rng, actor_state, critic_state, rollout, values, adv, target, actor_hstate = carry
 
         def minibatch(carry, data):
             actor_state, critic_state = carry
-            rollout, values, adv, target = data
+            rollout, values, adv, target, actor_hstate = data
 
             actor_state, critic_state, metrics = agent_train_step_fn(
-                actor_state, 
-                critic_state,
-                rollout, 
-                values,
-                adv,
-                target
+                actor_state=actor_state, 
+                critic_state=critic_state,
+                rollout=rollout, 
+                values=values,
+                advantages=adv,
+                targets=target,
+                actor_hstate=actor_hstate
             )
             return (actor_state, critic_state), metrics
         
@@ -157,19 +164,20 @@ def train_agent(
         ).reshape(num_mini_batches, -1, *x.shape[3:])
 
         minibatches = (
-            jax.tree_map(minibatch_fn, rollout),
+            jax.tree_util.tree_map(minibatch_fn, rollout),
             minibatch_fn(values),
             minibatch_fn(adv),
             minibatch_fn(target),
+            jax.tree_util.tree_map(minibatch_fn, actor_hstate)
         )
         (actor_state, critic_state), metrics = jax.lax.scan(
             minibatch, (actor_state, critic_state), minibatches
         )
         
-        return (rng, actor_state, critic_state, rollout, values, adv, target), metrics
+        return (rng, actor_state, critic_state, rollout, values, adv, target, actor_hstate), metrics
     
     carry_out, metrics = jax.lax.scan(
-        epoch, (rng, actor_state, critic_state, rollout, values, adv, target), None, num_epochs
+        epoch, (rng, actor_state, critic_state, rollout, values, adv, target, actor_hstate), None, num_epochs
     )
 
     actor_state, critic_state = carry_out[1], carry_out[2]

@@ -7,6 +7,11 @@ from models.agent import Actor, ConvActor, Critic, ConvCritic
 from models.optim import create_optimizer
 from environments.environments import get_agent_hypers
 
+from ued.rnn import (
+    _get_critic_model as _get_rnn_critic,
+    _get_policy_model as _get_rnn_policy,
+)
+
 @struct.dataclass
 class AgentHyperparams:
     actor_net: tuple
@@ -55,6 +60,36 @@ def create_agent(
     )
     return actor_train_state, critic_train_state
 
+def create_agent_rnn(
+    rng: chex.PRNGKey, agent_params: AgentHyperparams, action_n: int, obs_shape: tuple
+):
+    """Initialise actor and critic train states for a single agent."""
+    if type(obs_shape) is int:
+        obs_shape = (obs_shape,)
+    actor_rng, critic_rng = jax.random.split(rng)
+    policy_model = _get_rnn_policy(action_n)
+    critic_model = _get_rnn_critic()
+
+    actor_train_state = _create_rnn_train_state(
+        actor_rng,
+        policy_model,
+        obs_shape,
+        agent_params.optimizer,
+        agent_params.actor_learning_rate,
+        agent_params.max_grad_norm,
+        policy_model.initialize_carry((1, ))
+    )
+    critic_train_state = _create_rnn_train_state(
+        critic_rng,
+        critic_model,
+        obs_shape,
+        agent_params.optimizer,
+        agent_params.critic_learning_rate,
+        agent_params.max_grad_norm,
+        policy_model.initialize_carry((1, ))
+    )
+    
+    return actor_train_state, critic_train_state
 
 def create_value_critic(
     rng: chex.PRNGKey, agent_params: AgentHyperparams, obs_shape: tuple
@@ -94,6 +129,10 @@ def _create_train_state(rng, model, obs_shape, optimizer, learning_rate, max_gra
     tx = create_optimizer(optimizer, learning_rate, max_grad_norm)
     return TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
+def _create_rnn_train_state(rng, model, obs_shape, optimizer, learning_rate, max_grad_norm, hidden):
+    params = model.init(rng, (jnp.ones((1, *obs_shape)), jnp.full((1, 1), False)), hidden)["params"]
+    tx = create_optimizer(optimizer, learning_rate, max_grad_norm)
+    return TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 def eval_agent(rng, rollout_manager, env_params, actor_train_state, num_workers):
     """Evaluate episodic agent performance over multiple workers."""
@@ -105,7 +144,6 @@ def eval_agent(rng, rollout_manager, env_params, actor_train_state, num_workers)
     )
     return tot_reward.mean()
 
-
 def compute_advantage(critic_state, rollout, gamma, gae_lambda):
     """Compute semi-gradient critic MSE and advantage over a rollout"""
     all_obs = jnp.append(rollout.obs, jnp.expand_dims(rollout.next_obs[-1], 0), axis=0)
@@ -115,10 +153,11 @@ def compute_advantage(critic_state, rollout, gamma, gae_lambda):
     )
     return jnp.mean(jnp.square(target - value[:-1])), adv
 
-def compute_val_adv_target(critic_state, rollout, gamma, gae_lambda):
+def compute_val_adv_target(critic_state, rollout, gamma, gae_lambda, hstate):
     """Compute advantage over a rollout, also return values and target estimates"""
+
     all_obs = jnp.append(rollout.obs, jnp.expand_dims(rollout.next_obs[-1], 0), axis=0)
-    value = critic_state.apply_fn({"params": critic_state.params}, all_obs)
+    _, value = critic_state.apply_fn({"params": critic_state.params}, (all_obs, jnp.full((all_obs.shape[-2], 1), False)), hstate)
     adv, target = jax.lax.stop_gradient(
         gae(value, rollout.reward, rollout.done, gamma, gae_lambda)
     )

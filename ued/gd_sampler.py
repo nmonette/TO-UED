@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import chex
 
 from .level_sampler import LevelSampler
+from .rnn import eval_agent
 from util import *
 
 
