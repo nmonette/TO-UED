@@ -77,7 +77,7 @@ def create_agent_rnn(
         agent_params.optimizer,
         agent_params.actor_learning_rate,
         agent_params.max_grad_norm,
-        policy_model.initialize_carry((1, ))
+        policy_model.initialize_carry(())
     )
     critic_train_state = _create_rnn_train_state(
         critic_rng,
@@ -86,7 +86,7 @@ def create_agent_rnn(
         agent_params.optimizer,
         agent_params.critic_learning_rate,
         agent_params.max_grad_norm,
-        policy_model.initialize_carry((1, ))
+        policy_model.initialize_carry(())
     )
     
     return actor_train_state, critic_train_state

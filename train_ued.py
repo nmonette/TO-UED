@@ -85,14 +85,13 @@ def make_train(args, eval_args):
             idx = jnp.argmax(eval_buffer.score)
             eval_level = jax.tree_util.tree_map(lambda x: x[idx], eval_buffer.level)
 
-            hstates = Actor.initialize_carry((args.env_workers, ))
-            
+            hstates = Actor.initialize_carry((args.env_workers * 16, ))
             metrics["agent_return_on_adversarial_level"] = eval_agent(
                 _rng, 
                 level_sampler.rollout_manager, 
                 eval_level.env_params,
                 actor_state,
-                args.env_workers, 
+                args.env_workers * 16, 
                 hstates
             )
             

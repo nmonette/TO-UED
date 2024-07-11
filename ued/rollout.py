@@ -59,7 +59,7 @@ class RolloutWrapper:
         def policy_step(state_input, _):
             rng, obs, state, train_state, hstate, cum_reward, valid_mask = state_input
             rng, _rng = jax.random.split(rng)
-            hstate, action_probs = train_state.apply_fn({"params": train_state.params}, (obs.reshape(1, -1), (1 - valid_mask).reshape(1, 1)), hstate)
+            hstate, action_probs = train_state.apply_fn({"params": train_state.params}, (obs.reshape(1, *obs.shape), (1 - valid_mask).reshape(1,1)), hstate)
             action = jax.random.choice(_rng, action_probs.shape[-1], p=action_probs.squeeze())
             rng, _rng = jax.random.split(rng)
             next_obs, next_state, reward, done, info = self.env.step(
@@ -76,7 +76,7 @@ class RolloutWrapper:
                 new_cum_reward,
                 new_valid_mask,
             ]
-            transition = Transition(obs, action, reward, next_obs, done, jnp.log(action_probs[action]))
+            transition = Transition(obs, action, reward, next_obs, done, jnp.log(action_probs.squeeze()[action]))
             if self.return_info:
                 return carry, (transition, info)
             return carry, transition

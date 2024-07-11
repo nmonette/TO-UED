@@ -6,6 +6,7 @@ import flax.linen as nn
 from flax.linen.initializers import constant, orthogonal
 
 from typing import Any, Optional, Tuple, Sequence
+from functools import partial
 
 Carry = Any
 Output = Any
@@ -30,11 +31,15 @@ class ResetRNN(nn.Module):
 
         def scan_fn(cell, carry, inputs):
             x, resets = inputs
+            where_fn = lambda a, b, c: jax.lax.select(jnp.int32(c), a, b)
+            where_vmap = partial(jax.vmap(where_fn), c=resets)
+
+            reshape_fn = lambda x: x.reshape(-1, 1, x.shape[-1])
 
             carry = jax.tree_map(
-                lambda a, b: jnp.where(resets[:, None], a, b), reset_carry, carry
+                where_vmap, jax.tree_map(reshape_fn, reset_carry), jax.tree_map(reshape_fn, carry)
             )
-            return jax.tree_util.tree_map(jnp.squeeze, cell(carry, x))
+            return cell(jax.tree_util.tree_map(jnp.squeeze, carry), x)
 
         scan = nn.scan(
             scan_fn,
@@ -43,7 +48,7 @@ class ResetRNN(nn.Module):
             in_axes=0,
             out_axes=0,
         )
-        return jax.tree_util.tree_map(jnp.squeeze, scan(self.cell, jax.tree_util.tree_map(jnp.squeeze, carry), inputs))
+        return scan(self.cell, carry, inputs)
     
 # TODO: Convolutional Actor and Critic, also weight sharing
 
@@ -53,7 +58,6 @@ class Actor(nn.Module):
     @nn.compact
     def __call__(self, inputs, hidden):
         obs, dones = inputs
-
         hidden, embedding = ResetRNN(nn.OptimizedLSTMCell(features=256))((obs, dones), initial_carry=hidden)
 
         actor_mean = nn.Dense(32, kernel_init=orthogonal(2), bias_init=constant(0.0), name="actor0")(embedding)
@@ -61,6 +65,7 @@ class Actor(nn.Module):
         actor_mean = nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0), name="actor1")(actor_mean)
         pi = jax.nn.softmax(actor_mean)
 
+        # jax.tree_map(jnp.squeeze, hidden)
         return hidden, pi
     
     @staticmethod
