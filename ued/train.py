@@ -110,31 +110,20 @@ def train_agent(
     critic_coeff: float,
     entropy_coeff: float
 ):
-    # --- Initialize Rollouts ---
-    rng, reset_rng, rollout_rng = jax.random.split(rng, 3)
-    reset_rng = jax.random.split(reset_rng, env_params.start_pos.shape[0])
-    init_obs, init_state = jax.vmap(rollout_manager.batch_reset, in_axes=(0, 0, None))(
-        reset_rng, env_params, num_workers
-    )
-    hstate = Actor.initialize_carry(init_obs.shape[:-1])
-    rollout_rng = jax.random.split(rollout_rng, env_params.start_pos.shape[0])
-    rollout_fn = partial(rollout_manager.batch_rollout, train_state=actor_state)
-
     # --- Perform Rollouts ---
-    # TODO: don't vmap over the batch rollout, that's way too many rollouts
-    # NOTE: with this current setup ^ we need to make --num_agents a low number (e.g. 32)
-    rollout, _, _, _ = mini_batch_vmap(rollout_fn, num_mini_batches=num_mini_batches)(
-        rng=rollout_rng,
-        env_params=env_params,
-        init_obs=init_obs,
-        init_state=init_state,
-        init_hstates=hstate
+    rng, reset_rng, rollout_rng = jax.random.split(rng, 3)
+
+    # NOTE: batch_reset has been modified to accept a batch of env_params
+    init_obs, init_state = rollout_manager.batch_reset(reset_rng, env_params)
+    hstate = Actor.initialize_carry(init_obs.shape[:-1])
+    rollout, _, _, _ = rollout_manager.batch_rollout(
+        rollout_rng, actor_state, env_params, init_obs, init_state, hstate
     )
 
     # --- Compute values, advantages, and targets ---
     value_fn = partial(compute_val_adv_target, critic_state, gamma=gamma, gae_lambda=gae_lambda)
-    adv, values, target = jax.vmap(jax.vmap(value_fn))(rollout=rollout, hstate=hstate) 
-    values = values[:,:,:-1]
+    adv, values, target = jax.vmap(value_fn)(rollout=rollout, hstate=hstate) 
+    values = values[:,:-1]
     
     agent_train_step_fn = partial(
         agent_train_step,
@@ -163,11 +152,11 @@ def train_agent(
             return (actor_state, critic_state), metrics
         
         rng, _rng = jax.random.split(rng)
-        perm = jax.random.permutation(_rng, rollout.obs.shape[0] * rollout.obs.shape[1])
+        perm = jax.random.permutation(_rng, rollout.obs.shape[0])
 
         minibatch_fn = lambda x: jnp.take(
-            x.reshape(-1, *x.shape[2:]), perm, axis=0) \
-            .reshape(num_mini_batches, -1, *x.shape[2:])
+            x.reshape(-1, *x.shape[1:]), perm, axis=0) \
+            .reshape(num_mini_batches, -1, *x.shape[1:])
         
         # --- Shuffle data and sort into minibatches ---
         minibatches = (

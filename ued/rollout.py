@@ -34,11 +34,28 @@ class RolloutWrapper:
         self.eval_rollout_len = eval_rollout_len
         self.return_info = return_info
 
-    # --- ENVIRONMENT RESET ---
-    def batch_reset(self, rng, env_params, num_workers):
+    def batch_reset_single_env(self, rng, env_params, num_workers):
         """Reset a single environment for multiple workers, returning initial states and observations."""
         rng = jax.random.split(rng, num_workers)
         batch_reset_fn = jax.vmap(self.env.reset, in_axes=(0, None))
+        return batch_reset_fn(rng, env_params)
+
+    # --- ENVIRONMENT ROLLOUT ---
+    def batch_rollout_single_env(
+        self, rng, train_state, env_params, init_obs, init_state, init_hstates, eval=False
+    ):
+        """Evaluate an agent on a single environment over a batch of workers."""
+        rng = jax.random.split(rng, init_obs.shape[0])
+        return jax.vmap(self.single_rollout, in_axes=(0, None, None, 0, 0, 0, None))(
+            rng, train_state, env_params, init_obs, init_state, init_hstates, eval
+        )
+
+
+    # --- ENVIRONMENT RESET ---
+    def batch_reset(self, rng, env_params):
+        """Reset a single environment for multiple workers, returning initial states and observations."""
+        rng = jax.random.split(rng, env_params.max_steps_in_episode.shape[0])
+        batch_reset_fn = jax.vmap(self.env.reset)
         return batch_reset_fn(rng, env_params)
 
     # --- ENVIRONMENT ROLLOUT ---
@@ -47,7 +64,7 @@ class RolloutWrapper:
     ):
         """Evaluate an agent on a single environment over a batch of workers."""
         rng = jax.random.split(rng, init_obs.shape[0])
-        return jax.vmap(self.single_rollout, in_axes=(0, None, None, 0, 0, 0, None))(
+        return jax.vmap(self.single_rollout, in_axes=(0, None, 0, 0, 0, 0, None))(
             rng, train_state, env_params, init_obs, init_state, init_hstates, eval
         )
 

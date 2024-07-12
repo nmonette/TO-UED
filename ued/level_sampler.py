@@ -17,6 +17,7 @@ from environments.level_sampler import LevelSampler as DummySampler
 from .rollout import RolloutWrapper
 from agents.agents import (
     create_agent_rnn,
+    create_agent,
     eval_agent,
     AgentHyperparams,
 )
@@ -350,7 +351,7 @@ class LevelSampler:
     def _create_agent(self, rng, level, value_critic=False):
         """Initialise an agent on the given level."""
         worker_rng, agent_rng = random.split(rng)
-        env_obs, env_state = self.rollout_manager.batch_reset(
+        env_obs, env_state = self.rollout_manager.batch_reset_single_env(
             worker_rng, level.env_params, self.env_workers
         )
         agent_hypers = self.agent_hypers
@@ -366,14 +367,34 @@ class LevelSampler:
             env_obs=env_obs,
             env_state=env_state,
         )
+    
+    def _create_dummy_agent(self, rng, level, value_critic=False):
+        """Initialise an agent on the given level."""
+        worker_rng, agent_rng = random.split(rng)
+        env_obs, env_state = self.rollout_manager.batch_reset_single_env(
+            worker_rng, level.env_params, self.env_workers
+        )
+        agent_hypers = self.agent_hypers
+        if value_critic:
+            agent_hypers = agent_hypers.replace(critic_dims=1)
+        actor_state, critic_state = create_agent(
+            agent_rng, agent_hypers, self.num_actions, self.obs_shape
+        )
+        return AgentState(
+            actor_state=actor_state,
+            critic_state=critic_state,
+            level=level,
+            env_obs=env_obs,
+            env_state=env_state,
+        )
 
     def _compute_algorithmic_regret(
         self, rng: chex.PRNGKey, lpg_agent_state: AgentState
     ):
         # --- Create antagonist (A2C) agent ---
         rng, _rng = jax.random.split(rng)
-        a2c_agent_state = DummySampler._create_agent(
-            self, _rng, lpg_agent_state.level, value_critic=True
+        a2c_agent_state = self._create_dummy_agent(
+            _rng, lpg_agent_state.level, value_critic=True
         )
 
         # --- Train antagonist agent ---

@@ -16,7 +16,7 @@ class GDSampler(LevelSampler):
 
     def _create_eval_agent(self, rng, level, actor_state, critic_state=None):
         """Initialise an agent on the given level."""
-        env_obs, env_state = self.rollout_manager.batch_reset(
+        env_obs, env_state = self.rollout_manager.batch_reset_single_env(
             rng, level.env_params, self.env_workers
         )
         return AgentState(
