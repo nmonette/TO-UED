@@ -33,8 +33,8 @@ def agent_train_step(
     
     def loss_fn(actor_params, critic_params):
         # --- Forward pass through policy network ---
-        obs = jnp.swapaxes(rollout.obs, 0, 1)
-        done = jnp.swapaxes(rollout.done, 0, 1)
+        obs = rollout.obs.swapaxes(0, 1)
+        done = rollout.done.swapaxes(0, 1)
         _, all_action_probs = actor_state.apply_fn({"params": actor_params}, (obs, done), hstate)
         all_action_probs = all_action_probs.swapaxes(0, 1)
         pi = jax.vmap(selected_action_probs)(all_action_probs, rollout.action)
@@ -159,10 +159,6 @@ def train_agent(
             x.reshape(-1, *x.shape[2:]), perm, axis=0) \
             .reshape(num_mini_batches, -1, *x.shape[2:])
         
-        hstate_fn = lambda x: jnp.take(
-            x.reshape(-1, *x.shape[1:]), perm, axis=0) \
-            .reshape(num_mini_batches, -1, *x.shape[1:])
-        
         minibatches = (
             jax.tree_util.tree_map(minibatch_fn, rollout),
             minibatch_fn(values),
@@ -170,7 +166,7 @@ def train_agent(
             minibatch_fn(target),
             jax.tree_util.tree_map(minibatch_fn, hstate)
         )
-        
+
         (actor_state, critic_state), metrics = jax.lax.scan(
             minibatch, (actor_state, critic_state), minibatches
         ) 

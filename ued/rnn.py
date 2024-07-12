@@ -31,15 +31,10 @@ class ResetRNN(nn.Module):
 
         def scan_fn(cell, carry, inputs):
             x, resets = inputs
-            where_fn = lambda a, b, c: jax.lax.select(jnp.int32(c), a, b)
-            where_vmap = partial(jax.vmap(where_fn), c=resets)
-
-            reshape_fn = lambda x: x.reshape(-1, 1, x.shape[-1])
-
             carry = jax.tree_map(
-                where_vmap, jax.tree_map(reshape_fn, reset_carry), jax.tree_map(reshape_fn, carry)
+                lambda a, b: jnp.where(resets.reshape(-1, 1), a, b).squeeze(), reset_carry, carry
             )
-            return cell(jax.tree_util.tree_map(jnp.squeeze, carry), x)
+            return cell(carry, x)
 
         scan = nn.scan(
             scan_fn,
