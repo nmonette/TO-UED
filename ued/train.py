@@ -9,7 +9,7 @@ from flax.training.train_state import TrainState
 from util.data import Transition
 from util.jax import mini_batch_vmap
 from agents.agents import compute_val_adv_target
-from .rnn import Actor, Critic
+from .rnn import Actor
 
 
 from typing import Any
@@ -32,9 +32,11 @@ def agent_train_step(
         return jnp.take_along_axis(all_action_probs, rollout_action[..., None], -1).squeeze()
     
     def loss_fn(actor_params, critic_params):
-        # --- Forward pass through policy network ---
+        # --- Swap axes because RNN handles sequence length as dim 0 ---
         obs = rollout.obs.swapaxes(0, 1)
         done = rollout.done.swapaxes(0, 1)
+
+        # --- Forward pass through policy network ---
         _, all_action_probs = actor_state.apply_fn({"params": actor_params}, (obs, done), hstate)
         all_action_probs = all_action_probs.swapaxes(0, 1)
         pi = jax.vmap(selected_action_probs)(all_action_probs, rollout.action)
@@ -44,6 +46,7 @@ def agent_train_step(
         # --- Forward pass through value network ---    
         _, values_pred = critic_state.apply_fn({"params": critic_params}, (obs, done), hstate)
         values_pred = values_pred.swapaxes(0, 1)
+
         # --- Calculate value loss ---
         values_pred_clipped = values + (values_pred - values).clip(-clip_eps, clip_eps)
         value_losses = jnp.square(values - targets)
@@ -84,6 +87,7 @@ def agent_train_step(
 
         return loss, metrics
     
+    # --- Apply Gradients ---
     grad_fn = jax.grad(loss_fn, has_aux=True, argnums=(0, 1))
     (actor_grad, critic_grad), metrics = grad_fn(actor_state.params, critic_state.params)
     actor_state = actor_state.apply_gradients(grads=actor_grad)
@@ -106,6 +110,7 @@ def train_agent(
     critic_coeff: float,
     entropy_coeff: float
 ):
+    # --- Initialize Rollouts ---
     rng, reset_rng, rollout_rng = jax.random.split(rng, 3)
     reset_rng = jax.random.split(reset_rng, env_params.start_pos.shape[0])
     init_obs, init_state = jax.vmap(rollout_manager.batch_reset, in_axes=(0, 0, None))(
@@ -115,7 +120,9 @@ def train_agent(
     rollout_rng = jax.random.split(rollout_rng, env_params.start_pos.shape[0])
     rollout_fn = partial(rollout_manager.batch_rollout, train_state=actor_state)
 
+    # --- Perform Rollouts ---
     # TODO: don't vmap over the batch rollout, that's way too many rollouts
+    # NOTE: with this current setup ^ we need to make --num_agents a low number (e.g. 32)
     rollout, _, _, _ = mini_batch_vmap(rollout_fn, num_mini_batches=num_mini_batches)(
         rng=rollout_rng,
         env_params=env_params,
@@ -123,6 +130,8 @@ def train_agent(
         init_state=init_state,
         init_hstates=hstate
     )
+
+    # --- Compute values, advantages, and targets ---
     value_fn = partial(compute_val_adv_target, critic_state, gamma=gamma, gae_lambda=gae_lambda)
     adv, values, target = jax.vmap(jax.vmap(value_fn))(rollout=rollout, hstate=hstate) 
     values = values[:,:,:-1]
@@ -141,6 +150,7 @@ def train_agent(
             actor_state, critic_state = carry
             rollout, values, adv, target, hstate = data
 
+            # --- Perform one update per minibatch ---
             actor_state, critic_state, metrics = agent_train_step_fn(
                 actor_state=actor_state, 
                 critic_state=critic_state,
@@ -159,6 +169,7 @@ def train_agent(
             x.reshape(-1, *x.shape[2:]), perm, axis=0) \
             .reshape(num_mini_batches, -1, *x.shape[2:])
         
+        # --- Shuffle data and sort into minibatches ---
         minibatches = (
             jax.tree_util.tree_map(minibatch_fn, rollout),
             minibatch_fn(values),
@@ -170,6 +181,7 @@ def train_agent(
         (actor_state, critic_state), metrics = jax.lax.scan(
             minibatch, (actor_state, critic_state), minibatches
         ) 
+
         return (rng, actor_state, critic_state, rollout, values, adv, target, hstate), metrics
     
     carry_out, metrics = jax.lax.scan(

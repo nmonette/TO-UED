@@ -31,6 +31,8 @@ class ResetRNN(nn.Module):
 
         def scan_fn(cell, carry, inputs):
             x, resets = inputs
+            
+            # --- Reset hidden state if environment is reset ---
             carry = jax.tree_map(
                 lambda a, b: jnp.where(resets.reshape(-1, 1), a, b).squeeze(), reset_carry, carry
             )
@@ -53,14 +55,22 @@ class Actor(nn.Module):
     @nn.compact
     def __call__(self, inputs, hidden):
         obs, dones = inputs
-        hidden, embedding = ResetRNN(nn.OptimizedLSTMCell(features=256))((obs, dones), initial_carry=hidden)
 
+        # --- Feature extraction ---
+        embedding = nn.Dense(
+            128, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)
+        )(obs)
+        embedding = nn.relu(embedding)
+
+        # --- Do a scan through the recurrent layer ---
+        hidden, embedding = ResetRNN(nn.OptimizedLSTMCell(features=256))((embedding, dones), initial_carry=hidden)
+
+        # --- Pass through the rest of the feedforward layers ---
         actor_mean = nn.Dense(32, kernel_init=orthogonal(2), bias_init=constant(0.0), name="actor0")(embedding)
         actor_mean = nn.relu(actor_mean)
         actor_mean = nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0), name="actor1")(actor_mean)
         pi = jax.nn.softmax(actor_mean)
 
-        # jax.tree_map(jnp.squeeze, hidden)
         return hidden, pi
     
     @staticmethod
@@ -74,8 +84,16 @@ class Critic(nn.Module):
     def __call__(self, inputs, hidden):
         obs, dones = inputs
 
-        hidden, embedding = ResetRNN(nn.OptimizedLSTMCell(features=256))((obs, dones), initial_carry=hidden)
+        # --- Feature extraction ---
+        embedding = nn.Dense(
+            128, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)
+        )(obs)
+        embedding = nn.relu(embedding)
 
+        # --- Do a scan through the recurrent layer ---
+        hidden, embedding = ResetRNN(nn.OptimizedLSTMCell(features=256))((embedding, dones), initial_carry=hidden)
+
+        # --- Pass through the rest of the feedforward layers ---
         critic = nn.Dense(32, kernel_init=orthogonal(2), bias_init=constant(0.0), name="critic0")(embedding)
         critic = nn.relu(critic)
         critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0), name="critic1")(critic)
@@ -87,7 +105,10 @@ class Critic(nn.Module):
         return nn.OptimizedLSTMCell(features=256).initialize_carry(jax.random.PRNGKey(0), (*batch_dims, 256))
     
 def eval_agent(rng, rollout_manager, env_params, actor_train_state, num_workers, init_hstate):
-    """Evaluate episodic agent performance over multiple workers."""
+    """
+        Evaluate episodic agent performance over multiple workers.
+        This version takes hstate as an argument.
+    """
     rng, _rng = jax.random.split(rng)
     env_obs, env_state = rollout_manager.batch_reset(_rng, env_params, num_workers)
     rng, _rng = jax.random.split(rng)
