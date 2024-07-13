@@ -6,12 +6,20 @@ import environments.gridworld.gridworld as grid
 import environments.gridworld.configs as grid_conf
 import environments.gymnax.configs as gym_conf
 
+import environments.jaxued.maze.env as maze
+import environments.jaxued.maze.configs as maze_conf
+from .jaxued.autoreplay import AutoReplayWrapper
+
 
 def get_env(env_name: str, env_kwargs: dict):
     if env_name in gymnax.registered_envs:
         env, _ = gymnax.make(env_name, **env_kwargs)
     elif env_name in grid.registered_envs:
         env = grid.GridWorld(**env_kwargs)
+    elif env_name in maze.registered_envs:
+        env = AutoReplayWrapper(
+            maze.Maze(**env_kwargs)
+        )
     else:
         raise ValueError(
             f"Environment {env_name} not registered in any environment sources."
@@ -50,6 +58,9 @@ def get_env_spec(env_name: str, env_mode: str):
     elif env_name in grid.registered_envs:
         kwargs, max_rollout_len = grid_conf.get_env_spec(env_mode)
         max_lifetime = grid_conf.get_max_lifetime(env_mode)
+    elif env_name in maze.registered_envs:
+        kwargs, max_rollout_len = maze_conf.get_env_spec("maze")
+        max_lifetime = maze_conf.get_max_lifetime("maze")
     else:
         raise ValueError(f"Environment {env_name} has no get env spec method.")
     return kwargs, max_rollout_len, max_lifetime
@@ -60,4 +71,6 @@ def get_agent_hypers(env_name: str, env_mode: str = None):
         return gym_conf.get_agent_hypers(env_name)
     elif env_name in grid.registered_envs:
         return grid_conf.get_agent_hypers(env_mode)
+    elif env_name in maze.registered_envs:
+        return maze_conf.get_agent_hypers(env_mode)
     raise ValueError(f"Environment {env_name} has no get agent hyperparameters method.")

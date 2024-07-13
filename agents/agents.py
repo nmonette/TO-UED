@@ -130,7 +130,7 @@ def _create_train_state(rng, model, obs_shape, optimizer, learning_rate, max_gra
     return TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
 def _create_rnn_train_state(rng, model, obs_shape, optimizer, learning_rate, max_grad_norm, hidden):
-    params = model.init(rng, (jnp.ones((1, *obs_shape)), jnp.full((1, 1), False)), hidden)["params"]
+    params = model.init(rng, (jax.tree_map(lambda x: jnp.ones((1, *x)), obs_shape, is_leaf=lambda x: type(x) is tuple), jnp.full((1, 1), False)), hidden)["params"]
     tx = create_optimizer(optimizer, learning_rate, max_grad_norm)
     return TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 

@@ -6,6 +6,7 @@ import jax.numpy as jnp
 
 from typing import Optional
 from environments.environments import get_env
+from environments.jaxued.maze.env import EnvParams
 
 from util import *
 
@@ -30,6 +31,7 @@ class RolloutWrapper:
         self.env_kwargs = env_kwargs
         # Define the RL environment & network forward function
         self.env = get_env(env_name, env_kwargs)
+
         self.train_rollout_len = train_rollout_len
         self.eval_rollout_len = eval_rollout_len
         self.return_info = return_info
@@ -37,7 +39,12 @@ class RolloutWrapper:
     def batch_reset_single_env(self, rng, env_params, num_workers):
         """Reset a single environment for multiple workers, returning initial states and observations."""
         rng = jax.random.split(rng, num_workers)
-        batch_reset_fn = jax.vmap(self.env.reset, in_axes=(0, None))
+        if self.env_name == "Maze-v0":
+            batch_reset_fn = jax.vmap(
+                partial(self.env.reset_env_to_level, params=self.env.default_params), in_axes=(0, None))
+        else:   
+            batch_reset_fn = jax.vmap(self.env.reset, in_axes=(0, None))
+
         return batch_reset_fn(rng, env_params)
 
     # --- ENVIRONMENT ROLLOUT ---
@@ -54,8 +61,15 @@ class RolloutWrapper:
     # --- ENVIRONMENT RESET ---
     def batch_reset(self, rng, env_params):
         """Reset a single environment for multiple workers, returning initial states and observations."""
-        rng = jax.random.split(rng, env_params.max_steps_in_episode.shape[0])
-        batch_reset_fn = jax.vmap(self.env.reset)
+        
+        if self.env_name == "Maze-v0":
+            rng = jax.random.split(rng, env_params.width.shape[0])
+            batch_reset_fn = jax.vmap(
+                partial(self.env.reset_env_to_level, params=self.env.default_params)
+            )
+        else:
+            rng = jax.random.split(rng, env_params.max_steps_in_episode.shape[0])
+            batch_reset_fn = jax.vmap(self.env.reset)
         return batch_reset_fn(rng, env_params)
 
     # --- ENVIRONMENT ROLLOUT ---
@@ -63,7 +77,7 @@ class RolloutWrapper:
         self, rng, train_state, env_params, init_obs, init_state, init_hstates, eval=False
     ):
         """Evaluate an agent on a single environment over a batch of workers."""
-        rng = jax.random.split(rng, init_obs.shape[0])
+        rng = jax.random.split(rng, init_state.time.shape[0])
         return jax.vmap(self.single_rollout, in_axes=(0, None, 0, 0, 0, 0, None))(
             rng, train_state, env_params, init_obs, init_state, init_hstates, eval
         )
@@ -76,7 +90,10 @@ class RolloutWrapper:
         def policy_step(state_input, _):
             rng, obs, state, train_state, hstate, cum_reward, valid_mask = state_input
             rng, _rng = jax.random.split(rng)
-            hstate, action_probs = train_state.apply_fn({"params": train_state.params}, (obs.reshape(1, *obs.shape), (1 - valid_mask).reshape(1,1)), hstate)
+            obs_shape = jax.tree_map(
+                lambda x: (1, *x), obs.shape, is_leaf=lambda x: type(x) is tuple
+            )
+            hstate, action_probs = train_state.apply_fn({"params": train_state.params}, (map_reshape(obs, obs_shape), jnp.full((1,1), False)), hstate)
             action = jax.random.choice(_rng, action_probs.shape[-1], p=action_probs.squeeze())
             rng, _rng = jax.random.split(rng)
             next_obs, next_state, reward, done, info = self.env.step(

@@ -26,7 +26,7 @@ class ResetRNN(nn.Module):
     ) -> Tuple[Carry, Output]:
         # On episode completion, model resets to this
         if reset_carry is None:
-            reset_carry = self.cell.initialize_carry(jax.random.PRNGKey(0), inputs[0].shape[1:])
+            self.cell.initialize_carry(jax.random.PRNGKey(0), inputs[0].shape[1:])
         carry = initial_carry if initial_carry is not None else reset_carry
 
         def scan_fn(cell, carry, inputs):
@@ -55,12 +55,15 @@ class Actor(nn.Module):
     @nn.compact
     def __call__(self, inputs, hidden):
         obs, dones = inputs
-
         # --- Feature extraction ---
-        embedding = nn.Dense(
-            128, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)
-        )(obs)
-        embedding = nn.relu(embedding)
+        img_embed = nn.Conv(16, kernel_size=(3, 3), strides=(1, 1), padding="VALID")(obs.image)
+        img_embed = img_embed.reshape(*img_embed.shape[:-3], -1)
+        img_embed = nn.relu(img_embed)
+        
+        dir_embed = jax.nn.one_hot(obs.agent_dir, 4)
+        dir_embed = nn.Dense(5, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0), name="scalar_embed")(dir_embed)
+        
+        embedding = jnp.append(img_embed, dir_embed.reshape(-1, 5), axis=-1)
 
         # --- Do a scan through the recurrent layer ---
         hidden, embedding = ResetRNN(nn.OptimizedLSTMCell(features=256))((embedding, dones), initial_carry=hidden)
@@ -85,10 +88,14 @@ class Critic(nn.Module):
         obs, dones = inputs
 
         # --- Feature extraction ---
-        embedding = nn.Dense(
-            128, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)
-        )(obs)
-        embedding = nn.relu(embedding)
+        img_embed = nn.Conv(16, kernel_size=(3, 3), strides=(1, 1), padding="VALID")(obs.image)
+        img_embed = img_embed.reshape(*img_embed.shape[:-3], -1)
+        img_embed = nn.relu(img_embed)
+        
+        dir_embed = jax.nn.one_hot(obs.agent_dir, 4)
+        dir_embed = nn.Dense(5, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0), name="scalar_embed")(dir_embed)
+        
+        embedding = jnp.append(img_embed, dir_embed.reshape(-1, 5), axis=-1)
 
         # --- Do a scan through the recurrent layer ---
         hidden, embedding = ResetRNN(nn.OptimizedLSTMCell(features=256))((embedding, dones), initial_carry=hidden)

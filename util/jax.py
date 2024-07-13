@@ -20,6 +20,16 @@ def jax_debug_wrapper(args, f):
 def gather(action_probabilities, action_index):
     return action_probabilities[action_index]
 
+def map_reshape(item, shape):
+    return jax.tree_util.tree_map(
+        lambda x, y: x.reshape(*y), item, shape
+    )
+
+def map_swapaxes(item, axis1, axis2):
+    return jax.tree_util.tree_map(
+        lambda x: x.swapaxes(axis1, axis2), item
+    )
+
 
 def mini_batch_vmap(f, num_mini_batches):
     """

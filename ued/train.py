@@ -7,10 +7,9 @@ import chex
 from flax.training.train_state import TrainState
 
 from util.data import Transition
-from util.jax import mini_batch_vmap
+from util.jax import mini_batch_vmap, map_reshape, map_swapaxes
 from agents.agents import compute_val_adv_target
 from .rnn import Actor
-
 
 from typing import Any
 from functools import partial
@@ -33,8 +32,8 @@ def agent_train_step(
     
     def loss_fn(actor_params, critic_params):
         # --- Swap axes because RNN handles sequence length as dim 0 ---
-        obs = rollout.obs.swapaxes(0, 1)
-        done = rollout.done.swapaxes(0, 1)
+        obs = map_swapaxes(rollout.obs, 0, 1)
+        done = map_swapaxes(rollout.done, 0, 1)
 
         # --- Forward pass through policy network ---
         _, all_action_probs = actor_state.apply_fn({"params": actor_params}, (obs, done), hstate)
@@ -115,7 +114,7 @@ def train_agent(
 
     # NOTE: batch_reset has been modified to accept a batch of env_params
     init_obs, init_state = rollout_manager.batch_reset(reset_rng, env_params)
-    hstate = Actor.initialize_carry(init_obs.shape[:-1])
+    hstate = Actor.initialize_carry(init_state.time.shape[:-1])
     rollout, _, _, _ = rollout_manager.batch_rollout(
         rollout_rng, actor_state, env_params, init_obs, init_state, hstate
     )
@@ -152,7 +151,7 @@ def train_agent(
             return (actor_state, critic_state), metrics
         
         rng, _rng = jax.random.split(rng)
-        perm = jax.random.permutation(_rng, rollout.obs.shape[0])
+        perm = jax.random.permutation(_rng, rollout.action.shape[0])
 
         minibatch_fn = lambda x: jnp.take(
             x.reshape(-1, *x.shape[1:]), perm, axis=0) \

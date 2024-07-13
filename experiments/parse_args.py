@@ -13,16 +13,16 @@ def parse_args(cmd_args=sys.argv[1:]):
 
     # --- ENVIRONMENT ---
     parser.add_argument(
-        "--env_name", help="Environment name", type=str, default="GridWorld-v0"
+        "--env_name", help="Environment name", type=str, default="Maze-v0"
     )
     parser.add_argument(
-        "--env_mode", help="Environment mode", type=str, default="all_shortlife"
+        "--env_mode", help="Environment mode", type=str, default="maze"
     )
     parser.add_argument(
-        "--eval_env_name", help="Environment name for eval levels", type=str, default="GridWorld-v0"
+        "--eval_env_name", help="Environment name for eval levels", type=str, default="Maze-v0"
     )
     parser.add_argument(
-        "--eval_env_mode", help="Environment mode for eval levels", default="all_shortlife" 
+        "--eval_env_mode", help="Environment mode for eval levels", default="maze" 
     )
     parser.add_argument(
         "--env_workers",

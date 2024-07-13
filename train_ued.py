@@ -100,9 +100,10 @@ def make_train(args, eval_args):
             
             return carry, metrics
 
-        tile_fn = lambda x: jnp.tile(x[0], (args.num_agents, 1)).squeeze()
+        tile_fn = lambda x: jnp.array([x[0]]).repeat(args.num_agents, axis=0).squeeze()
         init_train_levels = jax.tree_util.tree_map(tile_fn, level_buffer.level)
         init_eval_levels = jax.tree_util.tree_map(tile_fn, eval_buffer.level)
+
         # --- Stack and return metrics ---
         zeros = jnp.zeros_like(level_buffer.score)
         carry = (rng, actor_state, critic_state, level_buffer, eval_buffer, \

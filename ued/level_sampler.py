@@ -14,6 +14,7 @@ from util import *
 from environments.environments import get_env, reset_env_params, get_env_spec
 from environments.rollout import RolloutWrapper as DummyRollout
 from environments.level_sampler import LevelSampler as DummySampler
+from environments.jaxued.maze import make_level_generator
 from .rollout import RolloutWrapper
 from agents.agents import (
     create_agent_rnn,
@@ -65,6 +66,12 @@ class LevelSampler:
         self.env_kwargs, self.max_rollout_len, self.max_lifetime = get_env_spec(
             self.env_name, self.env_mode
         )
+        
+        self.env_generator = None
+        if self.env_name == "Maze-v0":
+            self.env_generator = make_level_generator(
+                self.env_kwargs["max_height"], self.env_kwargs["max_width"], 25
+            )
 
         self.regret_method = args.regret_method
         self.num_regret_updates = args.num_regret_updates
@@ -108,7 +115,11 @@ class LevelSampler:
     @partial(jax.vmap, in_axes=(None, 0))
     def _sample_env_params(self, rng):
         """Sample a batch of environment parameters and agent lifetimes."""
-        return reset_env_params(rng, self.env_name, self.env_mode)
+
+        if self.env_generator is None:
+            return reset_env_params(rng, self.env_name, self.env_mode)
+        else:
+            return self.env_generator(rng), 2500
 
     def initial_sample(
         self,
@@ -516,7 +527,12 @@ class LevelSampler:
 
     @property
     def obs_shape(self):
-        return self.env.observation_space(self.env.default_params).shape
+        if self.env_name == "Maze-v0":
+            key = jax.random.key(0)
+            obs, state = self.env.reset_to_level(key, self.env_generator(key), self.env.default_params)
+            return jax.tree_map(jnp.shape, obs)
+        else:
+            return self.env.observation_space(self.env.default_params).shape
 
          
         
