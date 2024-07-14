@@ -106,19 +106,20 @@ def train_agent(
     gae_lambda: float, 
     clip_eps: float,
     critic_coeff: float,
-    entropy_coeff: float
+    entropy_coeff: float, 
+    hstate,
+    init_obs,
+    init_state,
 ):
     # --- Perform Rollouts ---
-    rng, reset_rng, rollout_rng = jax.random.split(rng, 3)
-
-    # NOTE: batch_reset has been modified to accept a batch of env_params
-    init_obs, init_state = rollout_manager.batch_reset(reset_rng, env_params)
-    hstate = Actor.initialize_carry(init_state.time.shape)
-    rollout, _, _, _ = rollout_manager.batch_rollout(
+    rng, rollout_rng = jax.random.split(rng)
+    #rollout, end_obs, end_state, hstate, cum_return
+    rollout, end_obs, end_state, end_hstate, _ = rollout_manager.batch_rollout(
         rollout_rng, actor_state, env_params, init_obs, init_state, hstate
     )
 
     # --- Compute values, advantages, and targets ---
+    hstate = Actor.initialize_carry(init_state.time.shape)
     value_fn = partial(compute_val_adv_target, critic_state, gamma=gamma, gae_lambda=gae_lambda)
     adv, values, target = jax.vmap(value_fn)(rollout=rollout, hstate=hstate) 
     values = values[:,:-1]
@@ -176,8 +177,7 @@ def train_agent(
     )
 
     actor_state, critic_state = carry_out[1], carry_out[2]
-
-    return actor_state, critic_state, jax.tree_util.tree_map(jnp.mean, metrics)
+    return (actor_state, critic_state, end_hstate, end_obs, end_state), jax.tree_util.tree_map(jnp.mean, metrics)
 
 
 

@@ -114,7 +114,7 @@ def train_agent(
     # NOTE: batch_reset has been modified to accept a batch of env_params
     init_obs, init_state = rollout_manager.batch_reset_single_env(reset_rng, env_params, num_workers)
     hstate = Actor.initialize_carry(init_state.time.shape)
-    rollout, _, _, _ = rollout_manager.batch_rollout_single_env(
+    rollout, _, _, _, _ = rollout_manager.batch_rollout_single_env(
         rollout_rng, actor_state, env_params, init_obs, init_state, hstate
     )
 

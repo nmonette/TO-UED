@@ -131,10 +131,10 @@ class RolloutWrapper:
         )
         if self.return_info:
             rollout, info = rollout
-        end_obs, end_state, cum_return = carry_out[1], carry_out[2], carry_out[5]
+        end_obs, end_state, hstate, cum_return = carry_out[1], carry_out[2], carry_out[4], carry_out[5]
         if self.return_info:
-            return rollout, end_obs, end_state, cum_return, info
-        return rollout, end_obs, end_state, cum_return
+            return rollout, end_obs, end_state, hstate, cum_return, info
+        return rollout, end_obs, end_state, hstate, cum_return
 
     def optimal_return(self, env_params, max_rollout_len, return_all):
         """Return the optimal expected return for the given set of environment parameters."""
