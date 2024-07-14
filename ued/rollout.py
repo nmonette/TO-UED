@@ -52,11 +52,10 @@ class RolloutWrapper:
         self, rng, train_state, env_params, init_obs, init_state, init_hstates, eval=False
     ):
         """Evaluate an agent on a single environment over a batch of workers."""
-        rng = jax.random.split(rng, init_obs.shape[0])
+        rng = jax.random.split(rng, init_obs.image.shape[0])
         return jax.vmap(self.single_rollout, in_axes=(0, None, None, 0, 0, 0, None))(
             rng, train_state, env_params, init_obs, init_state, init_hstates, eval
         )
-
 
     # --- ENVIRONMENT RESET ---
     def batch_reset(self, rng, env_params):
@@ -90,10 +89,10 @@ class RolloutWrapper:
         def policy_step(state_input, _):
             rng, obs, state, train_state, hstate, cum_reward, valid_mask = state_input
             rng, _rng = jax.random.split(rng)
-            obs_shape = jax.tree_map(
-                lambda x: (1, *x), obs.shape, is_leaf=lambda x: type(x) is tuple
+            reshaped_obs = obs.replace(
+                image = obs.image.reshape(1, *obs.image.shape)
             )
-            hstate, action_probs = train_state.apply_fn({"params": train_state.params}, (map_reshape(obs, obs_shape), jnp.full((1,1), False)), hstate)
+            hstate, action_probs = train_state.apply_fn({"params": train_state.params}, (reshaped_obs, jnp.full((1,1), False)), hstate)
             action = jax.random.choice(_rng, action_probs.shape[-1], p=action_probs.squeeze())
             rng, _rng = jax.random.split(rng)
             next_obs, next_state, reward, done, info = self.env.step(

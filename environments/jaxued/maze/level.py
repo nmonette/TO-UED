@@ -5,6 +5,10 @@ import jax
 import jax.numpy as jnp
 
 @struct.dataclass
+class EnvParams:
+    max_steps_in_episode: int = 250
+
+@struct.dataclass
 class Level:
     """This represents a level in the maze environment. The main features are the wall map, goal position, agent position and agent direction.
     """
@@ -15,6 +19,7 @@ class Level:
     agent_dir: int
     width: int
     height: int
+    max_steps_in_episode: int = EnvParams.max_steps_in_episode
     
     def is_well_formatted(self):
         wall_map_is_binary = jnp.all((self.wall_map == 0) | (self.wall_map == 1))

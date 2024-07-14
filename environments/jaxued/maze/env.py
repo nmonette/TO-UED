@@ -6,7 +6,7 @@ import chex
 from flax import struct
 from gymnax.environments import spaces
 from environments.jaxued.underspecified_env import UnderspecifiedEnv
-from .level import Level, prefabs
+from .level import Level, prefabs, EnvParams
 
 class Actions(IntEnum):
     left = 0    # Turn left
@@ -78,10 +78,6 @@ class Observation:
             image = self.image.shape,
             agent_dir = self.agent_dir.reshape(-1).shape
         )
-    
-@struct.dataclass
-class EnvParams:
-    max_steps_in_episode: int = 250
     
 class Maze(UnderspecifiedEnv):
     """This is an implementation of a Maze in a minigrid-style environment.

@@ -23,7 +23,7 @@ from agents.agents import (
     AgentHyperparams,
 )
 from .rnn import eval_agent as eval_rnn_agent, Actor
-from agents.a2c import train_a2c_agent, A2CHyperparams
+from .train_single_env import train_eval_agent
 
 
 # TODO: Reimplement positive_value_loss and l1_value_loss
@@ -100,9 +100,8 @@ class LevelSampler:
         self.buffer_size = args.buffer_size
         self.p_replay = args.p_replay
         self.num_mini_batches = args.num_mini_batches
-        self.a2c_hypers = A2CHyperparams(
-            args.gamma, args.gae_lambda, args.entropy_coeff
-        )
+
+        self.args = args
 
     def initialize_buffer(self, rng):
         """Creates a new level buffer, if used by the score function."""
@@ -115,7 +114,6 @@ class LevelSampler:
     @partial(jax.vmap, in_axes=(None, 0))
     def _sample_env_params(self, rng):
         """Sample a batch of environment parameters and agent lifetimes."""
-
         if self.env_generator is None:
             return reset_env_params(rng, self.env_name, self.env_mode)
         else:
@@ -378,69 +376,60 @@ class LevelSampler:
             env_obs=env_obs,
             env_state=env_state,
         )
-    
-    def _create_dummy_agent(self, rng, level, value_critic=False):
-        """Initialise an agent on the given level."""
-        worker_rng, agent_rng = random.split(rng)
-        env_obs, env_state = self.rollout_manager.batch_reset_single_env(
-            worker_rng, level.env_params, self.env_workers
-        )
-        agent_hypers = self.agent_hypers
-        if value_critic:
-            agent_hypers = agent_hypers.replace(critic_dims=1)
-        actor_state, critic_state = create_agent(
-            agent_rng, agent_hypers, self.num_actions, self.obs_shape
-        )
-        return AgentState(
-            actor_state=actor_state,
-            critic_state=critic_state,
-            level=level,
-            env_obs=env_obs,
-            env_state=env_state,
-        )
 
     def _compute_algorithmic_regret(
         self, rng: chex.PRNGKey, lpg_agent_state: AgentState
     ):
-        # --- Create antagonist (A2C) agent ---
+        # --- Create antagonist (PPO) agent ---
         rng, _rng = jax.random.split(rng)
-        a2c_agent_state = self._create_dummy_agent(
+        ant_agent_state = self._create_agent(
             _rng, lpg_agent_state.level, value_critic=True
         )
 
         # --- Train antagonist agent ---
         rng, _rng = jax.random.split(rng)
-        a2c_agent_state, _ = train_a2c_agent(
-            rng=_rng,
-            agent_state=a2c_agent_state,
-            rollout_manager=self.dummy_rollout,
-            num_train_steps=self.max_lifetime,
-            hypers=self.a2c_hypers,
+        (ant_actor_state, ant_critic_state), _ = train_eval_agent(
+            rng,
+            actor_state=ant_agent_state.actor_state,
+            critic_state=ant_agent_state.critic_state,
+            env_params=ant_agent_state.level.env_params,
+            rollout_manager=self.rollout_manager,
+            num_epochs=self.args.num_epochs,
+            num_mini_batches=self.args.num_mini_batches,
+            num_workers=self.args.env_workers,
+            gamma=self.args.gamma,
+            gae_lambda=self.args.gae_lambda, 
+            clip_eps=self.args.clip_eps,
+            critic_coeff=self.args.critic_coeff,
+            entropy_coeff=self.args.entropy_coeff,
+            num_steps=self.max_lifetime // (self.args.num_mini_batches * self.args.num_epochs),
+        )
+
+        ant_agent_state = ant_agent_state.replace(
+            actor_state = ant_actor_state,
+            critic_state = ant_critic_state
         )
 
         # --- Evaluate LPG and antagonist agents ---
         eval_fn = partial(
-            eval_agent,
-            rollout_manager=self.dummy_rollout,
-            num_workers=self.env_workers,
-        )
-        lpg_rng, a2c_rng = jax.random.split(rng)
-        
-        lpg_rng, _rng = jax.random.split(lpg_rng)
-        lpg_agent_return = eval_rnn_agent(
-            rng=lpg_rng,
+            eval_rnn_agent,
             rollout_manager=self.rollout_manager,
             num_workers=self.env_workers,
             env_params=lpg_agent_state.level.env_params,
-            actor_train_state=lpg_agent_state.actor_state, 
             init_hstate= Actor.initialize_carry((self.args.env_workers, ))
         )
-        a2c_agent_return = eval_fn(
-            rng=a2c_rng,
-            env_params=lpg_agent_state.level.env_params,
-            actor_train_state=a2c_agent_state.actor_state,
+        lpg_rng, a2c_rng = jax.random.split(rng)
+        # rng, rollout_manager, env_params, actor_train_state, num_workers, init_hstate
+        lpg_rng, _rng = jax.random.split(lpg_rng)
+        lpg_agent_return = eval_fn(
+            rng=lpg_rng,
+            actor_train_state=lpg_agent_state.actor_state, 
         )
-        return a2c_agent_return - lpg_agent_return
+        ant_agent_return = eval_fn(
+            rng=a2c_rng,
+            actor_train_state=ant_actor_state,
+        )
+        return ant_agent_return - lpg_agent_return
 
     def _reset_lowest_scoring(
         self, rng: chex.PRNGKey, level_buffer: LevelBuffer, minimum_new: int

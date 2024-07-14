@@ -112,9 +112,9 @@ def train_agent(
     rng, reset_rng, rollout_rng = jax.random.split(rng, 3)
 
     # NOTE: batch_reset has been modified to accept a batch of env_params
-    init_obs, init_state = rollout_manager.batch_reset(reset_rng, env_params)
+    init_obs, init_state = rollout_manager.batch_reset_single_env(reset_rng, env_params, num_workers)
     hstate = Actor.initialize_carry(init_state.time.shape)
-    rollout, _, _, _ = rollout_manager.batch_rollout(
+    rollout, _, _, _ = rollout_manager.batch_rollout_single_env(
         rollout_rng, actor_state, env_params, init_obs, init_state, hstate
     )
 
@@ -181,10 +181,55 @@ def train_agent(
 
 
 
-        
-        
+def train_eval_agent(
+    rng: chex.PRNGKey,
+    actor_state: TrainState,
+    critic_state: TrainState,
+    env_params,
+    rollout_manager: Any,
+    num_epochs: int,
+    num_mini_batches: int,
+    num_workers: int,
+    gamma: float,
+    gae_lambda: float, 
+    clip_eps: float,
+    critic_coeff: float,
+    entropy_coeff: float,
+    num_steps: int
+):
+    
+    train_agent_fn = partial(
+        train_agent,
+        env_params=env_params,
+        rollout_manager=rollout_manager,
+        num_epochs=num_epochs,
+        num_mini_batches=num_mini_batches,
+        num_workers=num_workers,
+        gamma=gamma,
+        gae_lambda=gae_lambda, 
+        clip_eps=clip_eps,
+        critic_coeff=critic_coeff,
+        entropy_coeff=entropy_coeff
+    )
+    
 
+    def loop(carry, _):
+        rng, actor_state, critic_state = carry
 
+        rng, _rng = jax.random.split(rng)
+        actor_state, critic_state, metrics = train_agent_fn(
+            _rng, actor_state, critic_state
+        )
+
+        return (rng, actor_state, critic_state), metrics
+
+        
+    carry_out, metrics = jax.lax.scan(
+        loop, (rng, actor_state, critic_state), None, num_steps
+    )
+    _, actor_state, critic_state, = carry_out
+
+    return (actor_state, critic_state), metrics
 
     
 

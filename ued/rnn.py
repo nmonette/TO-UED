@@ -26,7 +26,7 @@ class ResetRNN(nn.Module):
     ) -> Tuple[Carry, Output]:
         # On episode completion, model resets to this
         if reset_carry is None:
-            self.cell.initialize_carry(jax.random.PRNGKey(0), inputs[0].shape[1:])
+            reset_carry = self.cell.initialize_carry(jax.random.PRNGKey(0), inputs[0].shape[1:])
         carry = initial_carry if initial_carry is not None else reset_carry
 
         def scan_fn(cell, carry, inputs):
@@ -62,7 +62,7 @@ class Actor(nn.Module):
         
         dir_embed = jax.nn.one_hot(obs.agent_dir, 4)
         dir_embed = nn.Dense(5, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0), name="scalar_embed")(dir_embed)
-        
+
         embedding = jnp.append(img_embed, dir_embed.reshape(-1, 5), axis=-1)
 
         # --- Do a scan through the recurrent layer ---
