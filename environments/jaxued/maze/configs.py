@@ -39,7 +39,7 @@ _TABULAR_HYPERS = {
     "critic_net": (),
     "critic_learning_rate": 1e-3,  # Reference: 4e+1
     "optimizer": "Adam",
-    "max_grad_norm": 0.5,
+    "max_grad_norm": 0.2,
 }
 
 _RAND_HYPERS = {

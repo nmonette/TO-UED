@@ -153,11 +153,9 @@ def compute_advantage(critic_state, rollout, gamma, gae_lambda):
     )
     return jnp.mean(jnp.square(target - value[:-1])), adv
 
-def compute_val_adv_target(critic_state, rollout, gamma, gae_lambda, hstate):
+def compute_adv_target(values, rollout, gamma, gae_lambda):
     """Compute advantage over a rollout, also return values and target estimates"""
-    all_obs = jax.tree_map(lambda x, y: jnp.append(x, jnp.expand_dims(y[-1], 0), axis=0), rollout.obs, rollout.next_obs)
-    _, value = critic_state.apply_fn({"params": critic_state.params}, (all_obs, jnp.full((all_obs.image.shape[-4], 1), False)), hstate)
     adv, target = jax.lax.stop_gradient(
-        gae(value, rollout.reward, rollout.done, gamma, gae_lambda)
+        gae(values, rollout.reward, rollout.done, gamma, gae_lambda)
     )
-    return adv, value, target
+    return adv, values, target

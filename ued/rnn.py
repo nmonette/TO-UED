@@ -49,6 +49,35 @@ class ResetRNN(nn.Module):
     
 # TODO: Convolutional Actor and Critic, also weight sharing
 
+class ActorCritic(nn.Module):
+    action_dim: Sequence[int]
+
+    @nn.compact
+    def __call__(self, inputs, hidden):
+        obs, dones = inputs
+        
+        img_embed = nn.Conv(16, kernel_size=(3, 3), strides=(1, 1), padding="VALID")(obs.image)
+        img_embed = img_embed.reshape(*img_embed.shape[:-3], -1)
+        img_embed = nn.relu(img_embed)
+        
+        dir_embed = jax.nn.one_hot(obs.agent_dir, 4)
+        dir_embed = nn.Dense(5, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0), name="scalar_embed")(dir_embed)
+        
+        embedding = jnp.append(img_embed, dir_embed, axis=-1)
+
+        hidden, embedding = ResetRNN(nn.OptimizedLSTMCell(features=256))((embedding, dones), initial_carry=hidden)
+
+        actor_mean = nn.Dense(32, kernel_init=orthogonal(2), bias_init=constant(0.0), name="actor0")(embedding)
+        actor_mean = nn.relu(actor_mean)
+        actor_mean = nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0), name="actor1")(actor_mean)
+        pi = jax.nn.softmax(actor_mean)
+
+        critic = nn.Dense(32, kernel_init=orthogonal(2), bias_init=constant(0.0), name="critic0")(embedding)
+        critic = nn.relu(critic)
+        critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0), name="critic1")(critic)
+
+        return hidden, pi, jnp.squeeze(critic, axis=-1)
+
 class Actor(nn.Module):
     action_dim: Sequence[int]
 
@@ -119,8 +148,8 @@ def eval_agent(rng, rollout_manager, env_params, actor_train_state, num_workers,
     rng, _rng = jax.random.split(rng)
     env_obs, env_state = rollout_manager.batch_reset_single_env(_rng, env_params, num_workers)
     rng, _rng = jax.random.split(rng)
-    _, _, _, _, tot_reward = rollout_manager.batch_rollout_single_env(
-        _rng, actor_train_state, env_params, env_obs, env_state, init_hstate, eval=True
+    _, _, _, _, _, tot_reward = rollout_manager.batch_rollout_single_env(
+        _rng, actor_train_state, None, env_params, env_obs, env_state, init_hstate, init_hstate, eval=True
     )
     return tot_reward.mean()
 

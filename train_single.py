@@ -46,16 +46,17 @@ def make_train(args, eval_args):
         
         # --- TRAIN LOOP ---
         def _ued_train_loop(carry, t):
-            rng, actor_state, critic_state, level, hstate, init_obs, init_state = carry
+            rng, actor_state, critic_state, level, hstate, value_hstate, init_obs, init_state = carry
             
             # --- Train agents on sampled levels ---
             rng, _rng = jax.random.split(rng)
-            (actor_state, critic_state, hstate, init_obs, init_state), metrics = train_agent_fn(
+            (actor_state, critic_state, hstate, value_hstate, init_obs, init_state), metrics = train_agent_fn(
                 rng=_rng,
                 actor_state=actor_state,
                 critic_state=critic_state,
                 env_params=level.env_params, 
                 hstate=hstate,
+                value_hstate=value_hstate,
                 init_obs=init_obs, 
                 init_state=init_state, 
             )
@@ -70,7 +71,7 @@ def make_train(args, eval_args):
                 eval_hstates
             )
             
-            carry = (rng, actor_state, critic_state, level, hstate, init_obs, init_state)
+            carry = (rng, actor_state, critic_state, level, hstate, value_hstate, init_obs, init_state)
             
             return carry, metrics
 
@@ -82,7 +83,7 @@ def make_train(args, eval_args):
         hstate = Actor.initialize_carry(init_state.time.shape)
 
         # --- Stack and return metrics ---
-        carry = (rng, actor_state, critic_state, level, hstate, init_obs, init_state)
+        carry = (rng, actor_state, critic_state, level, hstate, hstate, init_obs, init_state)
         carry, metrics = jax.lax.scan(
             _ued_train_loop, carry, jnp.arange(args.train_steps), args.train_steps
         )

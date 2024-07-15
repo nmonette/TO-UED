@@ -102,14 +102,15 @@ def train_agent(
     critic_coeff: float,
     entropy_coeff: float, 
     hstate,
+    value_hstate,
     init_obs,
     init_state,
 ):
     # --- Perform Rollouts ---
     rng, rollout_rng = jax.random.split(rng)
     #rollout, end_obs, end_state, hstate, cum_return
-    rollout, end_obs, end_state, end_hstate, _ = rollout_manager.batch_rollout(
-        rollout_rng, actor_state, env_params, init_obs, init_state, hstate
+    rollout, end_obs, end_state, end_hstate, end_value_hstate, _ = rollout_manager.batch_rollout(
+        rollout_rng, actor_state, env_params, init_obs, init_state, hstate, value_hstate
     )
 
     # --- Compute values, advantages, and targets ---
@@ -171,7 +172,7 @@ def train_agent(
     )
 
     actor_state, critic_state = carry_out[1], carry_out[2]
-    return (actor_state, critic_state, end_hstate, end_obs, end_state), jax.tree_util.tree_map(jnp.mean, metrics)
+    return (actor_state, critic_state, end_hstate, end_value_hstate, end_obs, end_state), jax.tree_util.tree_map(jnp.mean, metrics)
 
 
 

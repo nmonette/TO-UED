@@ -42,6 +42,7 @@ class Transition:
     next_obs: jnp.ndarray
     done: jnp.ndarray
     log_prob: jnp.ndarray
+    value: jnp.ndarray = None
 
 
 @struct.dataclass
