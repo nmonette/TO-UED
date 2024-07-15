@@ -30,21 +30,14 @@ def agent_train_step(
         return jnp.take_along_axis(all_action_probs, rollout_action[..., None], -1).squeeze()
     
     def loss_fn(actor_params, critic_params):
-        # --- Swap axes because RNN handles sequence length as dim 0 ---
-        # obs = map_swapaxes(rollout.obs, 0, 1)
-        # done = map_swapaxes(rollout.done, 0, 1)
-
         # --- Forward pass through policy network ---
         _, all_action_probs = jax.vmap(actor_state.apply_fn, in_axes=(None, 0, 0))({"params": actor_params}, (rollout.obs, rollout.done), hstate)
-        # all_action_probs = all_action_probs.swapaxes(0, 1)
+        entropy = jax.scipy.special.entr(all_action_probs).sum(-1).mean() 
         pi = jax.vmap(selected_action_probs)(all_action_probs, rollout.action)
-        entropy = jax.scipy.special.entr(pi).mean()
         lp = jnp.log(pi)
 
         # --- Forward pass through value network ---    
         _, values_pred = jax.vmap(critic_state.apply_fn, in_axes=(None, 0, 0))({"params": critic_params}, (rollout.obs, rollout.done), hstate)
-        # values_pred = values_pred.swapaxes(0, 1)
-
         # --- Calculate value loss ---
         values_pred_clipped = values + (values_pred - values).clip(-clip_eps, clip_eps)
         value_losses = jnp.square(values - targets)
@@ -72,17 +65,15 @@ def agent_train_step(
         loss = (
             loss_actor
             + critic_coeff * value_loss
-            + entropy_coeff * entropy
+            - entropy_coeff * entropy
         )
 
         metrics = {
             "ppo_loss": loss,
             "ppo_value_loss": value_loss,
-            "unclipped_policy_loss": loss_actor1,
-            "clipped_policy_loss": loss_actor2,
+            "ppo_policy_loss": loss_actor,
             "policy_entropy": entropy
         }
-
         return loss, metrics
     
     # --- Apply Gradients ---
@@ -106,19 +97,19 @@ def train_agent(
     gae_lambda: float, 
     clip_eps: float,
     critic_coeff: float,
-    entropy_coeff: float
+    entropy_coeff: float, 
+    hstate,
+    init_obs,
+    init_state,
 ):
     # --- Perform Rollouts ---
-    rng, reset_rng, rollout_rng = jax.random.split(rng, 3)
-
-    # NOTE: batch_reset has been modified to accept a batch of env_params
-    init_obs, init_state = rollout_manager.batch_reset_single_env(reset_rng, env_params, num_workers)
-    hstate = Actor.initialize_carry(init_state.time.shape)
-    rollout, _, _, _, _ = rollout_manager.batch_rollout_single_env(
+    rng, rollout_rng = jax.random.split(rng)
+    rollout, end_obs, end_state, end_hstate, _ = rollout_manager.batch_rollout_single_env(
         rollout_rng, actor_state, env_params, init_obs, init_state, hstate
     )
 
     # --- Compute values, advantages, and targets ---
+    hstate = Actor.initialize_carry(init_state.time.shape)
     value_fn = partial(compute_val_adv_target, critic_state, gamma=gamma, gae_lambda=gae_lambda)
     adv, values, target = jax.vmap(value_fn)(rollout=rollout, hstate=hstate) 
     values = values[:,:-1]
@@ -164,7 +155,6 @@ def train_agent(
             minibatch_fn(target),
             jax.tree_util.tree_map(minibatch_fn, hstate)
         )
-
         (actor_state, critic_state), metrics = jax.lax.scan(
             minibatch, (actor_state, critic_state), minibatches
         ) 
@@ -176,10 +166,7 @@ def train_agent(
     )
 
     actor_state, critic_state = carry_out[1], carry_out[2]
-
-    return actor_state, critic_state, jax.tree_util.tree_map(jnp.mean, metrics)
-
-
+    return (actor_state, critic_state, end_hstate, end_obs, end_state), jax.tree_util.tree_map(jnp.mean, metrics)
 
 def train_eval_agent(
     rng: chex.PRNGKey,

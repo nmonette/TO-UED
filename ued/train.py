@@ -30,20 +30,14 @@ def agent_train_step(
         return jnp.take_along_axis(all_action_probs, rollout_action[..., None], -1).squeeze()
     
     def loss_fn(actor_params, critic_params):
-        # --- Swap axes because RNN handles sequence length as dim 0 ---
-        # obs = map_swapaxes(rollout.obs, 0, 1)
-        # done = map_swapaxes(rollout.done, 0, 1)
-
         # --- Forward pass through policy network ---
         _, all_action_probs = jax.vmap(actor_state.apply_fn, in_axes=(None, 0, 0))({"params": actor_params}, (rollout.obs, rollout.done), hstate)
-        # all_action_probs = all_action_probs.swapaxes(0, 1)
+        entropy = jax.scipy.special.entr(all_action_probs).sum(-1).mean() 
         pi = jax.vmap(selected_action_probs)(all_action_probs, rollout.action)
-        entropy = jax.scipy.special.entr(pi).mean()
         lp = jnp.log(pi)
 
         # --- Forward pass through value network ---    
         _, values_pred = jax.vmap(critic_state.apply_fn, in_axes=(None, 0, 0))({"params": critic_params}, (rollout.obs, rollout.done), hstate)
-        # values_pred = values_pred.swapaxes(0, 1)
 
         # --- Calculate value loss ---
         values_pred_clipped = values + (values_pred - values).clip(-clip_eps, clip_eps)

@@ -11,6 +11,7 @@ def create_optimizer(optimizer, learning_rate, max_grad_norm):
         )
     elif optimizer == "Adam":
         return optax.chain(
+            optax.clip_by_global_norm(max_grad_norm),
             optax.scale_by_adam(),
             optax.scale(learning_rate),
             optax.scale(-1.0),

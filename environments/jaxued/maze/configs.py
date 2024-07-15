@@ -35,10 +35,10 @@ _DEBUG_LIFETIME = 4
 
 _TABULAR_HYPERS = {
     "actor_net": (),
-    "actor_learning_rate": 4e1,
+    "actor_learning_rate": 1e-3,
     "critic_net": (),
-    "critic_learning_rate": 4e0,  # Reference: 4e+1
-    "optimizer": "SGD",
+    "critic_learning_rate": 1e-3,  # Reference: 4e+1
+    "optimizer": "Adam",
     "max_grad_norm": 0.5,
 }
 
