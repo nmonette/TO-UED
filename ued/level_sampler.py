@@ -402,7 +402,7 @@ class LevelSampler:
             clip_eps=self.args.clip_eps,
             critic_coeff=self.args.critic_coeff,
             entropy_coeff=self.args.entropy_coeff,
-            num_steps=self.max_lifetime // (self.args.num_mini_batches * self.args.num_epochs),
+            num_steps= 10# self.max_lifetime // (self.args.num_mini_batches * self.args.num_epochs),
         )
 
         ant_agent_state = ant_agent_state.replace(

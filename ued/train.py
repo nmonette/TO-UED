@@ -7,7 +7,7 @@ import chex
 from flax.training.train_state import TrainState
 
 from util.data import Transition
-from agents.agents import compute_val_adv_target
+from agents.agents import compute_adv_target
 from .rnn import Actor
 
 from typing import Any
@@ -38,7 +38,6 @@ def agent_train_step(
 
         # --- Forward pass through value network ---    
         _, values_pred = jax.vmap(critic_state.apply_fn, in_axes=(None, 0, 0))({"params": critic_params}, (rollout.obs, rollout.done), hstate)
-
         # --- Calculate value loss ---
         values_pred_clipped = values + (values_pred - values).clip(-clip_eps, clip_eps)
         value_losses = jnp.square(values - targets)
@@ -66,17 +65,15 @@ def agent_train_step(
         loss = (
             loss_actor
             + critic_coeff * value_loss
-            + entropy_coeff * entropy
+            - entropy_coeff * entropy
         )
 
         metrics = {
             "ppo_loss": loss,
             "ppo_value_loss": value_loss,
-            "unclipped_policy_loss": loss_actor1,
-            "clipped_policy_loss": loss_actor2,
+            "ppo_policy_loss": loss_actor,
             "policy_entropy": entropy
         }
-
         return loss, metrics
     
     # --- Apply Gradients ---
@@ -108,15 +105,14 @@ def train_agent(
 ):
     # --- Perform Rollouts ---
     rng, rollout_rng = jax.random.split(rng)
-    #rollout, end_obs, end_state, hstate, cum_return
     rollout, end_obs, end_state, end_hstate, end_value_hstate, _ = rollout_manager.batch_rollout(
-        rollout_rng, actor_state, env_params, init_obs, init_state, hstate, value_hstate
+        rollout_rng, actor_state, critic_state, env_params, init_obs, init_state, hstate, value_hstate
     )
 
     # --- Compute values, advantages, and targets ---
     hstate = Actor.initialize_carry(init_state.time.shape)
-    value_fn = partial(compute_val_adv_target, critic_state, gamma=gamma, gae_lambda=gae_lambda)
-    adv, values, target = jax.vmap(value_fn)(rollout=rollout, hstate=hstate) 
+    value_fn = partial(compute_adv_target, gamma=gamma, gae_lambda=gae_lambda)
+    adv, values, target = jax.vmap(value_fn)(values=rollout.value, rollout=rollout) 
     values = values[:,:-1]
     
     agent_train_step_fn = partial(
@@ -160,7 +156,6 @@ def train_agent(
             minibatch_fn(target),
             jax.tree_util.tree_map(minibatch_fn, hstate)
         )
-
         (actor_state, critic_state), metrics = jax.lax.scan(
             minibatch, (actor_state, critic_state), minibatches
         ) 
