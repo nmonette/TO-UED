@@ -61,6 +61,7 @@ def make_train(args, eval_args):
                 init_state=init_state, 
             )
 
+            rng, _rng = jax.random.split(rng)
             eval_hstates = Actor.initialize_carry((args.env_workers, ))
             metrics["agent_return"] = eval_agent(
                 _rng, 
