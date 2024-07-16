@@ -59,17 +59,17 @@ def make_train(args, eval_args):
         def _ued_train_loop(carry, t):
             rng, actor_state, critic_state, level_buffer, eval_buffer, \
                 train_levels, eval_levels, x_grad, y_grad, \
-                    hstate, value_hstate, init_obs, init_state = carry
+                    actor_hstate, critic_hstate, init_obs, init_state = carry
             
             # --- Train agents on sampled levels ---
             rng, _rng = jax.random.split(rng)
-            (actor_state, critic_state, hstate, value_hstate, init_obs, init_state), metrics = train_agent_fn(
+            (actor_state, critic_state, actor_hstate, critic_hstate, init_obs, init_state), metrics = train_agent_fn(
                 rng=_rng,
                 actor_state=actor_state,
                 critic_state=critic_state,
                 env_params=train_levels.env_params, 
-                hstate=hstate,
-                value_hstate=value_hstate,
+                actor_hstate=actor_hstate,
+                critic_hstate=critic_hstate,
                 init_obs=init_obs, 
                 init_state=init_state, 
             )
@@ -84,9 +84,9 @@ def make_train(args, eval_args):
                 return level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, hstate, hstate, init_obs, init_state
 
             def identity(rng, level_buffer, eval_buffer, x_grad, y_grad, train_levels, eval_levels, actor_state, critic_state):
-                return level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, hstate, value_hstate, init_obs, init_state
+                return level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, actor_hstate, critic_hstate, init_obs, init_state
             
-            level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, hstate, value_hstate, init_obs, init_state = jax.lax.cond(
+            level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, actor_hstate, critic_hstate, init_obs, init_state = jax.lax.cond(
                 t % args.regret_frequency == 0, sample, identity, rng, level_buffer, eval_buffer, x_grad, y_grad, train_levels, eval_levels, actor_state, critic_state
             )
 
@@ -102,7 +102,7 @@ def make_train(args, eval_args):
             ).mean()
             
             carry = (rng, actor_state, critic_state, level_buffer, eval_buffer, \
-                train_levels, eval_levels, x_grad, y_grad, hstate, value_hstate, init_obs, init_state)
+                train_levels, eval_levels, x_grad, y_grad, actor_hstate, critic_hstate, init_obs, init_state)
             
             return carry, metrics
         

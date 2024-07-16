@@ -98,15 +98,15 @@ def train_agent(
     clip_eps: float,
     critic_coeff: float,
     entropy_coeff: float, 
-    hstate,
-    value_hstate,
+    actor_hstate,
+    critic_hstate,
     init_obs,
     init_state,
 ):
     # --- Perform Rollouts ---
     rng, rollout_rng = jax.random.split(rng)
-    rollout, end_obs, end_state, end_hstate, end_value_hstate, _ = rollout_manager.batch_rollout_single_env(
-        rollout_rng, actor_state, critic_state, env_params, init_obs, init_state, hstate, value_hstate
+    rollout, end_obs, end_state, end_actor_hstate, end_critic_hstate, _ = rollout_manager.batch_rollout_single_env(
+        rollout_rng, actor_state, critic_state, env_params, init_obs, init_state, actor_hstate, critic_hstate
     )
 
     # --- Compute values, advantages, and targets ---
@@ -167,7 +167,7 @@ def train_agent(
     )
 
     actor_state, critic_state = carry_out[1], carry_out[2]
-    return (actor_state, critic_state, end_hstate, end_value_hstate, end_obs, end_state), jax.tree_util.tree_map(jnp.mean, metrics)
+    return (actor_state, critic_state, end_actor_hstate, end_critic_hstate, end_obs, end_state), jax.tree_util.tree_map(jnp.mean, metrics)
 
 def train_eval_agent(
     rng: chex.PRNGKey,
@@ -212,8 +212,8 @@ def train_eval_agent(
             rng=_rng, 
             actor_state=actor_state, 
             critic_state=critic_state, 
-            hstate=actor_hstate, 
-            value_hstate=critic_hstate, 
+            actor_hstate=actor_hstate, 
+            critic_hstate=critic_hstate, 
             init_obs=env_obs, 
             init_state=env_state
         )
