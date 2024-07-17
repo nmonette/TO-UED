@@ -105,7 +105,7 @@ def train_agent(
 ):
     # --- Perform Rollouts ---
     rng, rollout_rng = jax.random.split(rng)
-    rollout, end_obs, end_state, end_actor_hstate, end_critic_hstate, _ = rollout_manager.batch_rollout(
+    rollout, end_obs, end_state, end_actor_hstate, end_critic_hstate, returns = rollout_manager.batch_rollout(
         rollout_rng, actor_state, critic_state, env_params, init_obs, init_state, actor_hstate, critic_hstate
     )
 
@@ -165,6 +165,8 @@ def train_agent(
     carry_out, metrics = jax.lax.scan(
         epoch, (rng, actor_state, critic_state, rollout, values, adv, target, hstate), None, num_epochs
     )
+
+    metrics["agent_mean_train_return"] = returns
 
     actor_state, critic_state = carry_out[1], carry_out[2]
     return (actor_state, critic_state, end_actor_hstate, end_critic_hstate, end_obs, end_state), jax.tree_util.tree_map(jnp.mean, metrics)

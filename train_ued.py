@@ -1,6 +1,9 @@
 import jax
 import jax.numpy as jnp
+from jax.sharding import Mesh, PartitionSpec
+from jax.experimental.pjit import pjit
 from rich.traceback import install
+import numpy as np
 
 from ued.gd_sampler import GDSampler
 from ued.level_sampler import LevelSampler
@@ -9,7 +12,8 @@ from ued.rnn import eval_agent, Actor
 from experiments.parse_args import parse_args
 from experiments.logging import init_logger, log_results
 from util.jax import jax_debug_wrapper
-from ued.rnn import eval_agent
+from util.data import Level
+from environments.jaxued.maze import Level as MazeLevel, prefabs
 
 from functools import partial
 import sys
@@ -32,8 +36,11 @@ def make_train(args, eval_args):
             new=eval_buffer.new.at[0].set(True)
         )
 
-        holdout_buffer = level_sampler.initialize_buffer(holdout_rng)
-        holdout_levels = jax.tree_util.tree_map(lambda x: x[:16], holdout_buffer.level)
+        holdout_levels = Level(
+            env_params = MazeLevel.load_prefabs(prefabs.keys()), 
+            lifetime = jnp.full(11, 2500),
+            buffer_id = jnp.arange(11)
+        )
 
         init_agent = dummy_sampler._create_agent(
             agent_rng, jax.tree_util.tree_map(lambda x: x[0], level_buffer.level), True
@@ -91,9 +98,9 @@ def make_train(args, eval_args):
             )
 
             # --- Collecting return on the holdout set level ---
-            eval_hstates = Actor.initialize_carry((16, args.env_workers, ))
+            eval_hstates = Actor.initialize_carry((11, args.env_workers, ))
             rng, _rng = jax.random.split(rng)
-            _rng = jax.random.split(_rng, 16)
+            _rng = jax.random.split(_rng, 11)
             metrics["agent_return_on_holdout_set"] = jax.vmap(
                 lambda r, e, a, ew, hs: eval_agent(r, level_sampler.rollout_manager, e, a, ew, hs),
                 in_axes=(0, 0, None, None, 0)
@@ -135,7 +142,8 @@ def run_training_experiment(args, eval_args):
         init_logger(args)
     train_fn = make_train(args, eval_args)
     rng = jax.random.PRNGKey(args.seed)
-    metrics, actor_state, critic_state, level_buffer, eval_buffer = jax.jit(train_fn)(rng)
+    with Mesh(np.array(jax.devices()), ("devices", )):
+        metrics, actor_state, critic_state, level_buffer, eval_buffer = jax.jit(train_fn, in_shardings=None, out_shardings=None)(rng)
     if args.log:
         log_results(args, metrics, (actor_state, critic_state), level_buffer)
     else:

@@ -7,7 +7,6 @@ def create_optimizer(optimizer, learning_rate, max_grad_norm):
         return optax.chain(
             optax.clip_by_global_norm(max_grad_norm),
             optax.scale(learning_rate),
-            optax.scale(-1.0),
         )
     elif optimizer == "Adam":
         return optax.chain(

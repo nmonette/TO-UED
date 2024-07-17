@@ -1,0 +1,31 @@
+
+command:
+  - python3.11
+  - "-m"
+  - train_ued
+  - ${args_no_boolean_flags}
+entity: nathanmonette1
+method: grid
+name: ued lr sweep
+metric:
+  goal: maximize
+  name: agent_return_on_holdout_set
+parameters:
+  actor_lr:
+    values: [0.000001, 0.00001, 0.0001, 0.001]
+  critic_lr: 
+    values: [0.000001, 0.00001, 0.0001, 0.001]
+  train_steps:
+    value: 1000
+  num_mini_batches:
+    value: 8
+  num_agents: 
+    value: 256
+  score_function: 
+    value: "alg_regret"
+  regret_frequency: 
+    value: 10
+  train_rollout_len: 
+    value: 20
+  regret_method: 
+    value: "mini_batch_vmap"

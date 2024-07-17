@@ -92,11 +92,13 @@ class RolloutWrapper:
             reshaped_obs = obs.replace(
                 image = obs.image.reshape(1, *obs.image.shape)
             )
-            actor_hstate, action_probs = actor_state.apply_fn({"params": actor_state.params}, (reshaped_obs, last_done.reshape(1,1)), actor_hstate)
+            # last_done.reshape(1,1)
+            actor_hstate, action_probs = actor_state.apply_fn({"params": actor_state.params}, (reshaped_obs, jnp.full((1,1), False)), actor_hstate)
             
             value = None
             if critic_state is not None:
-                critic_hstate, value = critic_state.apply_fn({"params": critic_state.params}, (reshaped_obs, last_done.reshape(1,1)), critic_hstate)
+                # last_done.reshape(1,1)
+                critic_hstate, value = critic_state.apply_fn({"params": critic_state.params}, (reshaped_obs, jnp.full((1,1), False)), critic_hstate)
     
             action = jax.random.choice(_rng, action_probs.shape[-1], p=action_probs.squeeze())
             rng, _rng = jax.random.split(rng)

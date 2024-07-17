@@ -30,7 +30,10 @@ class AgentHyperparams:
             k: v for k, v in get_agent_hypers(args.env_name, args.env_mode).items()
         }
         # TODO: Make overrides here if tuning
-        return AgentHyperparams(**agent_hypers_dict, critic_dims=args.lpg_target_width)
+        return AgentHyperparams(**agent_hypers_dict, critic_dims=args.lpg_target_width).replace(
+            actor_learning_rate=args.actor_lr,
+            critic_learning_rate=args.critic_lr
+        )
 
 
 def create_agent(

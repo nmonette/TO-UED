@@ -5,7 +5,7 @@ import chex
 from .level_sampler import LevelSampler
 from .rnn import eval_agent
 from util import *
-
+from util.jax import pmap
 
 class GDSampler(LevelSampler):
     def __init__(self, args, fixed_eval = None):
@@ -95,7 +95,7 @@ class GDSampler(LevelSampler):
 
         rng, _rng = jax.random.split(rng)
         
-        eval_regrets = mini_batch_vmap(
+        eval_regrets = pmap(
             self._compute_algorithmic_regret, self.num_mini_batches
         )(score_rng, eval_agents)
         

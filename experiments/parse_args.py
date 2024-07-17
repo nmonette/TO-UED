@@ -223,6 +223,12 @@ def parse_args(cmd_args=sys.argv[1:]):
     parser.add_argument(
         "--num_epochs", help="Number of epochs for PPO training", type=int, default=5
     )
+    parser.add_argument(
+        "--actor_lr", help="PPO policy learning rate", type=float, default=1e-3
+    )
+    parser.add_argument(
+        "--critic_lr", help="PPO vf learning rate", type=float, default=1e-3
+    )
 
     args, rest_args = parser.parse_known_args(cmd_args)
     if rest_args:

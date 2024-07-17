@@ -35,11 +35,11 @@ _DEBUG_LIFETIME = 4
 
 _TABULAR_HYPERS = {
     "actor_net": (),
-    "actor_learning_rate": 1e-3,
+    "actor_learning_rate": 1e-6,
     "critic_net": (),
-    "critic_learning_rate": 1e-3,  # Reference: 4e+1
+    "critic_learning_rate": 1e-6,  # Reference: 4e+1
     "optimizer": "Adam",
-    "max_grad_norm": 0.2,
+    "max_grad_norm": 0.5,
 }
 
 _RAND_HYPERS = {
