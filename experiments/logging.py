@@ -28,20 +28,20 @@ def log_results(args, metrics, train_state, level_buffer):
         wandb.log(jax.tree_util.tree_map(lambda x: x[step], metrics))
 
     # Log checkpoints
-    ckpt_path = checkpoints.save_checkpoint(
-        ckpt_dir=os.path.join(wandb.run.dir, CKPT_DIR),
-        target=train_state,
-        step=args.train_steps,
-        keep=1,
-    )
-    wandb.save(ckpt_path, base_path=wandb.run.dir, policy="now")
-    if level_buffer is not None:
-        buffer_ckpt_path = checkpoints.save_checkpoint(
-            ckpt_dir=os.path.join(wandb.run.dir, CKPT_DIR),
-            target=level_buffer,
-            step=args.train_steps,
-            keep=1,
-            prefix="buffer_",
-        )
-        wandb.save(buffer_ckpt_path, base_path=wandb.run.dir, policy="now")
+    # ckpt_path = checkpoints.save_checkpoint(
+    #     ckpt_dir=os.path.join(wandb.run.dir, CKPT_DIR),
+    #     target=train_state,
+    #     step=args.train_steps,
+    #     keep=1,
+    # )
+    # wandb.save(ckpt_path, base_path=wandb.run.dir, policy="now")
+    # if level_buffer is not None:
+    #     buffer_ckpt_path = checkpoints.save_checkpoint(
+    #         ckpt_dir=os.path.join(wandb.run.dir, CKPT_DIR),
+    #         target=level_buffer,
+    #         step=args.train_steps,
+    #         keep=1,
+    #         prefix="buffer_",
+    #     )
+    #     wandb.save(buffer_ckpt_path, base_path=wandb.run.dir, policy="now")
     wandb.finish()

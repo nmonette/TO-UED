@@ -2,22 +2,23 @@
 command:
   - python3.11
   - "-m"
-  - train_ued
+  - train_single
   - "--log"
   - ${args_no_boolean_flags}
 entity: nathanmonette1
+project: rnn-test-sweep-2
 method: grid
-name: ued lr sweep
+name: single-env lr sweep
 metric:
   goal: maximize
-  name: agent_return_on_holdout_set
+  name: agent_return
 parameters:
   actor_lr:
-    values: [0.000001, 0.00001, 0.0001, ]
+    values: [0.000002, 0.000004, 0.00001, 0.00002, 0.00004]
   critic_lr: 
-    values: [0.000001, 0.00001, 0.0001]
+    values: [0.000002, 0.000004, 0.00001, 0.00002, 0.00004]
   train_steps:
-    value: 1000
+    value: 5000
   num_mini_batches:
     value: 8
   num_agents: 
@@ -33,6 +34,6 @@ parameters:
   wandb_entity:
     value: "nathanmonette1"
   wandb_project:
-    value: "gd-sampler-ued"
+    value: "rnn-test"
   seed: 
     value: 100
