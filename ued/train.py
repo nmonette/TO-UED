@@ -166,7 +166,7 @@ def train_agent(
         epoch, (rng, actor_state, critic_state, rollout, values, adv, target, hstate), None, num_epochs
     )
 
-    metrics["agent_mean_train_return"] = returns
+    # metrics["agent_mean_train_return"] = returns
 
     actor_state, critic_state = carry_out[1], carry_out[2]
     return (actor_state, critic_state, end_actor_hstate, end_critic_hstate, end_obs, end_state), jax.tree_util.tree_map(jnp.mean, metrics)
