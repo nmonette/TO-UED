@@ -36,8 +36,8 @@ class GDSampler(LevelSampler):
         @partial(jax.grad, has_aux=True)
         def sample_action(policy, _rng, bern, buffer):
             unseen_total = buffer.new.sum()
-            policy = jax.lax.select(jnp.logical_and(bern, unseen_total > 0), jnp.where(buffer.new, 1 / unseen_total, 0.), policy)
-            policy = jax.lax.select(jnp.logical_and(bern, unseen_total == 0), jnp.full_like(policy, 1 / len(buffer)), policy)
+            policy = jax.lax.select(jnp.logical_and(bern, unseen_total > 0), policy, jnp.where(buffer.new, 1 / unseen_total, 0.))
+            policy = jax.lax.select(jnp.logical_and(bern, unseen_total == 0), policy, jnp.full_like(policy, 1 / len(buffer)))
 
             action = jax.random.choice(_rng, jnp.arange(len(buffer)), p=policy)
 
@@ -116,4 +116,4 @@ class GDSampler(LevelSampler):
             score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),
             new = train_buffer.new.at[y_level_ids].set(False)
         )
-        return train_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad
+        return train_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, eval_regret

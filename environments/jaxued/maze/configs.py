@@ -20,7 +20,7 @@ def get_agent_hypers(mode: str):
 
 
 ENV_MODE_EPISODE_LEN = {
-    "maze":50
+    "maze":250
 }
 
 # Reference: lifetime = int(3e6 / (args.env_workers * args.train_rollout_len))

@@ -201,7 +201,8 @@ def parse_args(cmd_args=sys.argv[1:]):
     parser.add_argument(
         "--num_regret_updates", help="Number of regret updates to VMAP when using the regret vmap heuristic", type=int, default=32
     )
-
+    parser.add_argument("--true_regret", action="store_true", help="Use true regret (as opposed to algorithmic)")
+    parser.add_argument("--staleness_coeff", help="Staleness coefficient for PLR", type=float, default=0.3)
     # Optimistic Gradient Descent
     parser.add_argument(
         "--ogd_learning_rate", help="Stepsize for GDSampler", type=float, default=0.001

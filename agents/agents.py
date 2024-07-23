@@ -26,13 +26,30 @@ class AgentHyperparams:
 
     @staticmethod
     def from_args(args):
+
+        def actor_linear_schedule(count):
+            frac = (
+                1.0
+                - 0.1 * (count // (args.num_mini_batches * args.num_epochs))
+                / args.train_steps
+            )
+            return args.actor_lr * frac
+
+        def critic_linear_schedule(count):
+            frac = (
+                1.0
+                - 0.1 * (count // (args.num_mini_batches * args.num_epochs))
+                / args.train_steps
+            )
+            return args.critic_lr * frac
+        
         agent_hypers_dict = {
             k: v for k, v in get_agent_hypers(args.env_name, args.env_mode).items()
         }
         # TODO: Make overrides here if tuning
         return AgentHyperparams(**agent_hypers_dict, critic_dims=args.lpg_target_width).replace(
-            actor_learning_rate=args.actor_lr,
-            critic_learning_rate=args.critic_lr
+            actor_learning_rate=critic_linear_schedule,
+            critic_learning_rate=actor_linear_schedule
         )
 
 

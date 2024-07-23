@@ -15,7 +15,7 @@ from util.jax import pmap
 from environments.environments import get_env, reset_env_params, get_env_spec
 from environments.rollout import RolloutWrapper as DummyRollout
 from environments.level_sampler import LevelSampler as DummySampler
-from environments.jaxued.maze import make_level_generator
+from environments.jaxued.maze import make_level_generator, MazeSolved
 from .rollout import RolloutWrapper
 from agents.agents import (
     create_agent_rnn,
@@ -38,6 +38,8 @@ class LevelBuffer:
     score: float  # Most recent score on the level
     active: bool  # Whether the level is currently being evaluated
     new: bool  # Whether the level has been evaluated
+
+    last_sampled: int = 0. # The last time the level was sampled
 
     @staticmethod
     def create_buffer(params, lifetimes):
@@ -387,31 +389,6 @@ class LevelSampler:
             _rng, lpg_agent_state.level, value_critic=True
         )
 
-        # --- Train antagonist agent ---
-        rng, _rng = jax.random.split(rng)
-        (ant_actor_state, ant_critic_state), _ = train_eval_agent(
-            rng,
-            actor_state=ant_agent_state.actor_state,
-            critic_state=ant_agent_state.critic_state,
-            env_params=ant_agent_state.level.env_params,
-            rollout_manager=self.rollout_manager,
-            num_epochs=self.args.num_epochs,
-            num_mini_batches=self.args.num_mini_batches,
-            num_workers=self.args.env_workers,
-            gamma=self.args.gamma,
-            gae_lambda=self.args.gae_lambda, 
-            clip_eps=self.args.clip_eps,
-            critic_coeff=self.args.critic_coeff,
-            entropy_coeff=self.args.entropy_coeff,
-            # TODO: figure out what to do with this number
-            num_steps= 10 # self.max_lifetime // (self.args.num_mini_batches * self.args.num_epochs),
-        )
-
-        ant_agent_state = ant_agent_state.replace(
-            actor_state = ant_actor_state,
-            critic_state = ant_critic_state
-        )
-
         # --- Evaluate LPG and antagonist agents ---
         eval_fn = partial(
             eval_rnn_agent,
@@ -420,16 +397,51 @@ class LevelSampler:
             env_params=lpg_agent_state.level.env_params,
             init_hstate= Actor.initialize_carry((self.args.env_workers, ))
         )
-        lpg_rng, a2c_rng = jax.random.split(rng)
+
+        if self.env_name != "Maze-v0" or not self.args.true_regret:
+            # --- Train antagonist agent ---
+            rng, _rng = jax.random.split(rng)
+            (ant_actor_state, ant_critic_state), _ = train_eval_agent(
+                rng,
+                actor_state=ant_agent_state.actor_state,
+                critic_state=ant_agent_state.critic_state,
+                env_params=ant_agent_state.level.env_params,
+                rollout_manager=self.rollout_manager,
+                num_epochs=self.args.num_epochs,
+                num_mini_batches=self.args.num_mini_batches,
+                num_workers=self.args.env_workers,
+                gamma=self.args.gamma,
+                gae_lambda=self.args.gae_lambda, 
+                clip_eps=self.args.clip_eps,
+                critic_coeff=self.args.critic_coeff,
+                entropy_coeff=self.args.entropy_coeff,
+                # TODO: figure out what to do with this number
+                num_steps= 100 # self.max_lifetime // (self.args.num_mini_batches * self.args.num_epochs),
+            )
+            ant_agent_state = ant_agent_state.replace(
+                actor_state = ant_actor_state,
+                critic_state = ant_critic_state
+            )
+            rng, _rng = jax.random.split(rng)
+            ant_agent_return = eval_fn(
+                rng=_rng,
+                actor_train_state=ant_actor_state,
+            )
+        else:
+            # For Maze we calculate True Regret.
+            ant_agent_return = self.env._env.optimal_value(
+                self.env._env.init_state_from_level(
+                    jax.tree_util.tree_map(lambda x: x[0], ant_agent_state.env_state.env_state)
+                ),
+                self.args.gamma,
+                lpg_agent_state.level.env_params
+            )
+
         # rng, rollout_manager, env_params, actor_train_state, num_workers, init_hstate
-        lpg_rng, _rng = jax.random.split(lpg_rng)
+        lpg_rng, _rng = jax.random.split(rng)
         lpg_agent_return = eval_fn(
             rng=lpg_rng,
             actor_train_state=lpg_agent_state.actor_state, 
-        )
-        ant_agent_return = eval_fn(
-            rng=a2c_rng,
-            actor_train_state=ant_actor_state,
         )
         return ant_agent_return - lpg_agent_return
 

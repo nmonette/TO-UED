@@ -14,6 +14,10 @@ from .underspecified_env import (
 class AutoResetState:
     env_state: EnvState
     rng: chex.PRNGKey
+
+    @property
+    def time(self):
+        return self.env_state.time
     
 class AutoResetWrapper(UnderspecifiedEnv):
     """
@@ -69,6 +73,10 @@ class AutoResetWrapper(UnderspecifiedEnv):
     
     def action_space(self, params: EnvParams) -> Any:
         return self._env.action_space(params)
+
+    @property
+    def num_actions(self):
+        return self._env.num_actions
         
 
 @struct.dataclass
@@ -151,3 +159,7 @@ class AutoResetFiniteWrapper(UnderspecifiedEnv):
     
     def action_space(self, params: EnvParams) -> Any:
         return self._env.action_space(params)
+    
+    @property
+    def num_actions(self):
+        return self._env.num_actions

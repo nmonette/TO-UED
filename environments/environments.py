@@ -6,9 +6,12 @@ import environments.gridworld.gridworld as grid
 import environments.gridworld.configs as grid_conf
 import environments.gymnax.configs as gym_conf
 
+from environments.jaxued.maze import make_level_generator
 import environments.jaxued.maze.env as maze
+from environments.jaxued.maze.env_solved import MazeSolved
 import environments.jaxued.maze.configs as maze_conf
 from .jaxued.autoreplay import AutoReplayWrapper
+from .jaxued.autoreset import AutoResetWrapper, AutoResetFiniteWrapper
 
 
 def get_env(env_name: str, env_kwargs: dict):
@@ -18,8 +21,13 @@ def get_env(env_name: str, env_kwargs: dict):
         env = grid.GridWorld(**env_kwargs)
     elif env_name in maze.registered_envs:
         env = AutoReplayWrapper(
-            maze.Maze(**env_kwargs)
+            MazeSolved(**env_kwargs)
         )
+        # env = AutoResetFiniteWrapper(
+        #     MazeSolved(**env_kwargs), make_level_generator(
+        #         env_kwargs["max_height"], env_kwargs["max_width"], 25
+        #     )
+        # )
     else:
         raise ValueError(
             f"Environment {env_name} not registered in any environment sources."

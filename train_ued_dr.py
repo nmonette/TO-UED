@@ -28,9 +28,18 @@ def make_train(args, eval_args):
         level_buffer = level_sampler.initialize_buffer(dummy_rng)
 
         holdout_levels = Level(
-            env_params = MazeLevel.load_prefabs(prefabs.keys()), 
-            lifetime = jnp.full(11, 2500),
-            buffer_id = jnp.arange(11)
+            env_params = MazeLevel.load_prefabs([
+                "SixteenRooms",
+                "SixteenRooms2",
+                "Labyrinth",
+                "LabyrinthFlipped",
+                "Labyrinth2",
+                "StandardMaze",
+                "StandardMaze2",
+                "StandardMaze3",
+            ]), 
+            lifetime = jnp.full(8, 2500),
+            buffer_id = jnp.arange(8)
         )
 
         init_agent = level_sampler._create_agent(
@@ -107,9 +116,9 @@ def make_train(args, eval_args):
             ).mean()
 
             # --- Collecting return on the holdout set level ---
-            eval_hstates = Actor.initialize_carry((11, args.env_workers, ))
+            eval_hstates = Actor.initialize_carry((8, args.env_workers, ))
             rng, _rng = jax.random.split(rng)
-            _rng = jax.random.split(_rng, 11)
+            _rng = jax.random.split(_rng, 8)
 
             metrics["agent_return_on_holdout_set"] = jax.vmap(
                 lambda r, e, a, ew, hs: eval_agent(r, level_sampler.rollout_manager, e, a, ew, hs),
