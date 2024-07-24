@@ -89,7 +89,8 @@ def make_train(args, eval_args):
                     level_buffer,
                     train_levels,
                     actor_state, 
-                    critic_state
+                    critic_state,
+                    t
                 )
 
                 rng, _rng = jax.random.split(rng)

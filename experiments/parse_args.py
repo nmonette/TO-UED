@@ -181,7 +181,7 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--p_replay",
         help="Probability of replaying a level from the buffer (vs. random sampling)",
         type=float,
-        default=0.5,
+        default=0.95,
     )
     parser.add_argument(
         "--score_transform",
@@ -203,6 +203,7 @@ def parse_args(cmd_args=sys.argv[1:]):
     )
     parser.add_argument("--true_regret", action="store_true", help="Use true regret (as opposed to algorithmic)")
     parser.add_argument("--staleness_coeff", help="Staleness coefficient for PLR", type=float, default=0.3)
+    
     # Optimistic Gradient Descent
     parser.add_argument(
         "--ogd_learning_rate", help="Stepsize for GDSampler", type=float, default=0.001
