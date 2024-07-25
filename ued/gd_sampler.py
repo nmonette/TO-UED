@@ -95,7 +95,7 @@ class GDSampler(LevelSampler):
 
         rng, _rng = jax.random.split(rng)
         
-        eval_regrets = pmap(
+        eval_regrets = mini_batch_vmap(
             self._compute_algorithmic_regret, self.num_mini_batches
         )(score_rng, eval_agents)
         

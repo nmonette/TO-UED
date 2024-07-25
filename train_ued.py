@@ -11,7 +11,7 @@ from ued.train import train_agent
 from ued.rnn import eval_agent, Actor
 from experiments.parse_args import parse_args
 from experiments.logging import init_logger, log_results
-from util.jax import jax_debug_wrapper
+from util.jax import jax_debug_wrapper, pmap
 from util.data import Level
 from environments.jaxued.maze import Level as MazeLevel, prefabs
 
@@ -170,7 +170,8 @@ def run_training_experiment(args, eval_args):
     train_fn = make_train(args, eval_args)
     rng = jax.random.PRNGKey(args.seed)
     with Mesh(np.array(jax.devices()), ("devices", )):
-        metrics, actor_state, critic_state, level_buffer, eval_buffer = jax.jit(train_fn, in_shardings=None, out_shardings=None)(rng)
+        rng = jax.random.split(rng, 16)
+        metrics, actor_state, critic_state, level_buffer, eval_buffer = jax.tree_util.tree_map(lambda x: x.mean(axis=0), pmap(train_fn, 16)(rng))
     if args.log:
         log_results(args, metrics, (actor_state, critic_state), level_buffer)
     else:

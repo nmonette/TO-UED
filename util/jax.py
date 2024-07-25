@@ -67,3 +67,25 @@ def pmap(f, num_mini_batches):
         return jax.tree_map(lambda x: x.reshape(-1, *x.shape[2:]), fn(*mini_batched_args, **mini_batched_kwargs))
     
     return mapped_fn
+
+# NOTE: this has not been tested
+def mini_batch_pmap(f, num_mini_batches):
+    """
+    Execute a function in sequential, pmapped mini-batches.
+    Enables execution of batches too large to fit in memory.
+    """
+
+    def mapped_fn(*args, **kwargs):
+        def batched_fn(_, args):
+            args, kwargs = args
+            return None, jax.pmap(jax.vmap(f))(*args, **kwargs)
+
+        num_devices = len(jax.devices())
+        reshape_fn = lambda x: x.reshape(num_mini_batches, num_devices, -1, *x.shape[1:])
+
+        mini_batched_args = jax.tree_util.tree_map(reshape_fn, args)
+        mini_batched_kwargs = jax.tree_util.tree_map(reshape_fn, kwargs)
+        _, ret = jax.lax.scan(batched_fn, None, (mini_batched_args, mini_batched_kwargs))
+        return jax.tree_util.tree_map(lambda x: x.reshape((-1, *x.shape[2:])), ret)
+
+    return mapped_fn

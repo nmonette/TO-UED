@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 
 from .gd_sampler import GDSampler
-from util.jax import pmap
+from util.jax import pmap, mini_batch_vmap
 
 
 # NOTE: this is a variant that uses sampling with replacement. This may need to change.
@@ -53,7 +53,7 @@ class PLRSampler(GDSampler):
         eval_agents = jax.vmap(self._create_eval_agent, in_axes=(0, 0, None, None))(agent_rng, train_levels, actor_state, critic_state)
         
         score_rng = jax.random.split(rng, batch_size)
-        scores = pmap(
+        scores = mini_batch_vmap(
             self._compute_algorithmic_regret, self.num_mini_batches
         )(score_rng, eval_agents)
 

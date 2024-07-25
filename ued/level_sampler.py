@@ -191,7 +191,7 @@ class LevelSampler:
         _rng = jax.random.split(_rng, self.num_regret_updates)
         cond_fn = lambda r, agent, cond: jax.lax.cond(cond, self._compute_algorithmic_regret, lambda x,y: 0., r, agent)
         ## NOTE: self.num_regret_updates must be divisible by `self.num_mini_batches`
-        vmap_regrets = pmap(cond_fn, self.num_mini_batches)(_rng, vmap_agents, terminated_mask[:self.num_regret_updates])
+        vmap_regrets = mini_batch_vmap(cond_fn, self.num_mini_batches)(_rng, vmap_agents, terminated_mask[:self.num_regret_updates])
         
         # --- loop over the rest ---
         rng, _rng = jax.random.split(rng)
@@ -249,7 +249,7 @@ class LevelSampler:
                 
                 if self.regret_method == "mini_batch_vmap":
                     _rng = jax.random.split(_rng, batch_size)
-                    score = pmap(
+                    score = mini_batch_vmap(
                         self._compute_algorithmic_regret, self.num_mini_batches
                     )(_rng, old_agents)
 
@@ -263,7 +263,7 @@ class LevelSampler:
                     )
                 elif self.regret_method == "test":
                     _rng = jax.random.split(_rng, batch_size)
-                    score1 = pmap(
+                    score1 = mini_batch_vmap(
                         self._compute_algorithmic_regret, self.num_mini_batches
                     )(_rng, old_agents)
                     score2 = self.loop_eval(
