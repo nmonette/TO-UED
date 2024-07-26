@@ -18,7 +18,7 @@ parameters:
   critic_lr: 
     values: [0.00001, 0.00005, 0.0001, 0.001]
   train_steps:
-    value: 5000
+    value: 30000
   num_mini_batches:
     value: 1
   num_agents: 
@@ -26,11 +26,11 @@ parameters:
   score_function: 
     value: "alg_regret"
   regret_frequency: 
-    value: 10
+    value: 1
   train_rollout_len: 
     value: 250
   ppo_entropy_coeff:
-    values: [0.5, 0.1, 0.01]
+    values: [1, 0.5, 0.1, 0.01]
   regret_method: 
     value: "mini_batch_vmap"
   wandb_entity:
