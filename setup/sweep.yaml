@@ -29,7 +29,7 @@ parameters:
     value: 1
   train_rollout_len: 
     value: 250
-  ppo_entropy_coeff:
+  critic_coeff:
     values: [1, 0.5, 0.1, 0.01]
   regret_method: 
     value: "mini_batch_vmap"

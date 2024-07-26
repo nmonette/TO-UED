@@ -115,6 +115,22 @@ def make_train(args, eval_args):
                 _rng, train_metric_levels.env_params, actor_state, args.env_workers, train_metric_hstate
             ).mean()
 
+            # --- Collecting return on randomly sampled levels ---
+            rng, _rng = jax.random.split(rng)
+            test_buffer = level_sampler.initialize_buffer(_rng)
+            test_env_params = jax.tree_util.tree_map(lambda x: x[:16], test_buffer.level.env_params)
+            test_hstates = Actor.initialize_carry((16, args.env_workers, ))
+
+            rng, _rng = jax.random.split(rng)
+            _rng = jax.random.split(_rng, 16)
+
+            metrics["agent_return_on_random_set"] = jax.vmap(
+                lambda r, e, a, ew, hs: eval_agent(r, level_sampler.rollout_manager, e, a, ew, hs),
+                in_axes=(0, 0, None, None, 0)
+            )(
+                _rng, test_env_params, actor_state, args.env_workers, test_hstates
+            ).mean()
+
             # --- Collecting return on the holdout set level ---
             eval_hstates = Actor.initialize_carry((8, args.env_workers, ))
             rng, _rng = jax.random.split(rng)

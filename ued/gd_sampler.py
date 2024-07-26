@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 import chex
+from ued.level_sampler import LevelBuffer
 
 from .level_sampler import LevelSampler
 from .rnn import eval_agent
@@ -37,7 +38,6 @@ class GDSampler(LevelSampler):
         def sample_action(policy, _rng, bern, buffer):
             unseen_total = buffer.new.sum()
             policy = jax.lax.select(jnp.logical_and(bern, unseen_total > 0), policy, jnp.where(buffer.new, 1 / unseen_total, 0.))
-            policy = jax.lax.select(jnp.logical_and(bern, unseen_total == 0), policy, jnp.full_like(policy, 1 / len(buffer)))
 
             action = jax.random.choice(_rng, jnp.arange(len(buffer)), p=policy)
 
@@ -82,6 +82,18 @@ class GDSampler(LevelSampler):
             ) 
         
         # --- Sample levels ---
+        rng, train_rng, eval_rng = jax.random.split(rng, 3)
+        train_buffer = self._reset_lowest_scoring(train_rng, train_buffer, batch_size)
+        eval_buffer = self._reset_lowest_scoring(eval_rng, train_buffer, batch_size)
+
+        train_buffer = train_buffer.replace(
+            score = projection_simplex_truncated(train_buffer.score, self.args.ogd_trunc_size)
+        )
+
+        eval_buffer = eval_buffer.replace(
+            score = projection_simplex_truncated(eval_buffer.score, self.args.ogd_trunc_size)
+        )
+
         rng, x_rng, y_rng = jax.random.split(rng, 3)
         x_lp, x_level_ids = self._sample_actions(x_rng, new_train, batch_size)
         y_lp, y_level_ids = self._sample_actions(y_rng, new_eval, batch_size)
@@ -116,4 +128,5 @@ class GDSampler(LevelSampler):
             score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),
             new = train_buffer.new.at[y_level_ids].set(False)
         )
+        
         return train_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, eval_regret
