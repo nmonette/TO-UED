@@ -62,6 +62,19 @@ class GDSampler(LevelSampler):
         actor_state, 
         critic_state,
     ):
+        # --- Sample levels ---
+        rng, train_rng, eval_rng = jax.random.split(rng, 3)
+        train_buffer = self._reset_lowest_scoring(train_rng, train_buffer, batch_size)
+        eval_buffer = self._reset_lowest_scoring(eval_rng, train_buffer, batch_size)
+
+        train_buffer = train_buffer.replace(
+            score = projection_simplex_truncated(train_buffer.score, self.args.ogd_trunc_size)
+        )
+
+        eval_buffer = eval_buffer.replace(
+            score = projection_simplex_truncated(eval_buffer.score, self.args.ogd_trunc_size)
+        )
+
         # --- Calculate train and eval distributions ---
         x = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * prev_x_grad, self.args.ogd_trunc_size)
         y = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * prev_y_grad, self.args.ogd_trunc_size)
