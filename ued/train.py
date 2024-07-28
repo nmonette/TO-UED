@@ -79,6 +79,7 @@ def agent_train_step(
     # --- Apply Gradients ---
     grad_fn = jax.grad(loss_fn, has_aux=True, argnums=(0, 1))
     (actor_grad, critic_grad), metrics = grad_fn(actor_state.params, critic_state.params)
+
     actor_state = actor_state.apply_gradients(grads=actor_grad)
     critic_state = critic_state.apply_gradients(grads=critic_grad)
     return actor_state, critic_state, metrics
