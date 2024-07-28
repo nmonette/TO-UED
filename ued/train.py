@@ -32,7 +32,7 @@ def agent_train_step(
     def loss_fn(actor_params, critic_params):
         # --- Forward pass through policy network ---
         _, all_action_probs = jax.vmap(actor_state.apply_fn, in_axes=(None, 0, 0))({"params": actor_params}, (rollout.obs, rollout.done), hstate)
-        entropy = jax.scipy.special.entr(all_action_probs).sum(-1).mean() 
+        entropy = jax.scipy.special.entr(all_action_probs + 1e-8).sum(-1).mean() 
         pi = jax.vmap(selected_action_probs)(all_action_probs, rollout.action)
         lp = jnp.log(pi)
 
