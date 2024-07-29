@@ -142,6 +142,19 @@ def make_train(args, eval_args):
             )(
                 _rng, holdout_levels.env_params, actor_state, args.env_workers, eval_hstates
             )
+
+            metrics = {
+                **metrics,
+                "SixteenRooms_return":agent_return_on_holdout_set[0].mean(),
+                "SixteenRooms2_return":agent_return_on_holdout_set[1].mean(),
+                "Labyrinth_return":agent_return_on_holdout_set[2].mean(),
+                "LabyrinthFlipped_return":agent_return_on_holdout_set[3].mean(),
+                "Labyrinth2_return":agent_return_on_holdout_set[4].mean(),
+                "StandardMaze_return":agent_return_on_holdout_set[5].mean(),
+                "StandardMaze2_return":agent_return_on_holdout_set[6].mean(),
+                "StandardMaze3_return":agent_return_on_holdout_set[7].mean(),
+            }
+
             metrics["agent_return_on_holdout_set"] = agent_return_on_holdout_set.mean()
             holdout_set_success_rate = jnp.where(agent_return_on_holdout_set > 0, 1, 0)
             holdout_set_success_rate = holdout_set_success_rate.sum() / jnp.size(holdout_set_success_rate)

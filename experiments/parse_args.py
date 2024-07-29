@@ -44,13 +44,13 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--num_agents",
         help="Meta-train batch size, doubled for antithetic task sampling when using ES",
         type=int,
-        default=512,
+        default=32,
     )
     parser.add_argument(
         "--num_mini_batches",
         help="Number of meta-training mini-batches",
         type=int,
-        default=16,
+        default=1,
     )
     parser.add_argument(
         "--regret_frequency",
@@ -70,14 +70,14 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--train_rollout_len",
         help="Number of environment steps per agent update",
         type=int,
-        default=20,
+        default=256,
     )  # Reference: 20
-    parser.add_argument("--gamma", help="Discount factor", type=float, default=0.99)
+    parser.add_argument("--gamma", help="Discount factor", type=float, default=0.995)
     parser.add_argument(
         "--gae_lambda",
         help="Lambda parameter for Generalized Advantage Estimation",
         type=float,
-        default=0.95,
+        default=0.98,
     )
     parser.add_argument(
         "--entropy_coeff",
@@ -179,13 +179,13 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--score_function",
         help="UED level scoring function",
         type=str,
-        default="random",
+        default="alg_regret",
     )
     parser.add_argument(
         "--p_replay",
         help="Probability of replaying a level from the buffer (vs. random sampling)",
         type=float,
-        default=0.95,
+        default=0.8,
     )
     parser.add_argument(
         "--score_transform",
@@ -197,7 +197,7 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--score_temperature",
         help="Temperature of score transformation function",
         type=float,
-        default=1.0,
+        default=0.3,
     )
     parser.add_argument(
         "--regret_method", help="Method for computing regret", type=str, default="mini_batch_vmap", choices=["loop", "mini_batch_vmap", "heuristic", "test"]
@@ -210,7 +210,7 @@ def parse_args(cmd_args=sys.argv[1:]):
     
     # Optimistic Gradient Descent
     parser.add_argument(
-        "--ogd_learning_rate", help="Stepsize for GDSampler", type=float, default=0.001
+        "--ogd_learning_rate", help="Stepsize for GDSampler", type=float, default=0.01
     )
     parser.add_argument(
         "--ogd_trunc_size", help="Truncation size for projection onto Truncated Simplex", type=float, default=1e-6
@@ -230,10 +230,10 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--num_epochs", help="Number of epochs for PPO training", type=int, default=5
     )
     parser.add_argument(
-        "--actor_lr", help="PPO policy learning rate", type=float, default=1e-3
+        "--actor_lr", help="PPO policy learning rate", type=float, default=1e-4
     )
     parser.add_argument(
-        "--critic_lr", help="PPO vf learning rate", type=float, default=1e-3
+        "--critic_lr", help="PPO vf learning rate", type=float, default=1e-4
     )
 
     args, rest_args = parser.parse_known_args(cmd_args)
