@@ -11,6 +11,10 @@ def parse_args(cmd_args=sys.argv[1:]):
         help="Exit and stack trace when NaNs are encountered",
     )
 
+    parser.add_argument(
+        "--method", "WandB marker for which sampler we are using", type=str, default="GD"
+    )
+
     # --- ENVIRONMENT ---
     parser.add_argument(
         "--env_name", help="Environment name", type=str, default="Maze-v0"

@@ -8,7 +8,7 @@ import numpy as np
 from ued.gd_sampler import GDSampler
 from ued.level_sampler import LevelSampler
 from ued.train import train_agent
-from ued.rnn import eval_agent, Actor
+from ued.rnn import eval_agent_nomean as eval_agent, Actor
 from experiments.parse_args import parse_args
 from experiments.logging import init_logger, log_results
 from util.jax import jax_debug_wrapper
@@ -135,13 +135,17 @@ def make_train(args, eval_args):
             eval_hstates = Actor.initialize_carry((8, args.env_workers, ))
             rng, _rng = jax.random.split(rng)
             _rng = jax.random.split(_rng, 8)
-
-            metrics["agent_return_on_holdout_set"] = jax.vmap(
+            
+            agent_return_on_holdout_set = jax.vmap(
                 lambda r, e, a, ew, hs: eval_agent(r, level_sampler.rollout_manager, e, a, ew, hs),
                 in_axes=(0, 0, None, None, 0)
             )(
                 _rng, holdout_levels.env_params, actor_state, args.env_workers, eval_hstates
-            ).mean()
+            )
+            metrics["agent_return_on_holdout_set"] = agent_return_on_holdout_set.mean()
+            holdout_set_success_rate = jnp.where(agent_return_on_holdout_set > 0, 1, 0)
+            holdout_set_success_rate = holdout_set_success_rate.sum() / len(holdout_set_success_rate)
+            metrics["holdout_set_success_rate"] = holdout_set_success_rate
             
             carry = (rng, actor_state, critic_state, level_buffer, \
                 train_levels, x_grad, y_grad, actor_hstate, critic_hstate, init_obs, init_state)

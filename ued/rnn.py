@@ -153,6 +153,20 @@ def eval_agent(rng, rollout_manager, env_params, actor_train_state, num_workers,
     )
     return tot_reward.mean()
 
+def eval_agent_nomean(rng, rollout_manager, env_params, actor_train_state, num_workers, init_hstate):
+    """
+        Evaluate episodic agent performance over multiple workers.
+        This version takes hstate as an argument.
+    """
+    rng, _rng = jax.random.split(rng)
+    env_obs, env_state = rollout_manager.batch_reset_single_env(_rng, env_params, num_workers)
+    rng, _rng = jax.random.split(rng)
+    _, _, _, _, _, tot_reward = rollout_manager.batch_rollout_single_env(
+        _rng, actor_train_state, None, env_params, env_obs, env_state, init_hstate, init_hstate, eval=True
+    )
+    return tot_reward
+
+
 def _get_policy_model(n_actions):
     return Actor(n_actions)
 
