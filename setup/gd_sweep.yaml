@@ -13,6 +13,10 @@ metric:
   goal: maximize
   name: agent_return_on_holdout_set
 parameters:
+  wandb_project:
+    value: "to-ued-seed-sweep"
+  wandb_entity:
+    value: flair
   method:
     value: "GD"
   actor_lr:

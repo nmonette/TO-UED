@@ -12,7 +12,7 @@ def parse_args(cmd_args=sys.argv[1:]):
     )
 
     parser.add_argument(
-        "--method", "WandB marker for which sampler we are using", type=str, default="GD"
+        "--method", help="WandB marker for which sampler we are using", type=str, default="GD"
     )
 
     # --- ENVIRONMENT ---
