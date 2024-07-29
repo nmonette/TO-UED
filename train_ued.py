@@ -153,7 +153,7 @@ def make_train(args, eval_args):
                 _rng, holdout_levels.env_params, actor_state, args.env_workers, eval_hstates
             )
             metrics["agent_return_on_holdout_set"] = agent_return_on_holdout_set.mean()
-            holdout_set_success_rate = jnp.where(agent_return_on_holdout_set > 0, 1, 0)
+            holdout_set_success_rate = jnp.where(agent_return_on_holdout_set > 0, 1, 0).sum(0)
             holdout_set_success_rate = holdout_set_success_rate.sum() / len(holdout_set_success_rate)
             metrics["holdout_set_success_rate"] = holdout_set_success_rate
             
