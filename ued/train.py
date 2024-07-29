@@ -40,7 +40,7 @@ def agent_train_step(
         _, values_pred = jax.vmap(critic_state.apply_fn, in_axes=(None, 0, 0))({"params": critic_params}, (rollout.obs, rollout.done), hstate)
         # --- Calculate value loss ---
         values_pred_clipped = values + (values_pred - values).clip(-clip_eps, clip_eps)
-        value_losses = jnp.square(values - targets)
+        value_losses = jnp.square(values_pred - targets)
         value_losses_clipped = jnp.square(values_pred_clipped - targets)
         value_loss = (
             0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
