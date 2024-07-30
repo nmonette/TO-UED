@@ -34,7 +34,7 @@ class PLRSampler(GDSampler):
             scores,
         )
         rng, _rng = jax.random.split(rng)
-        level_ids = jax.random.choice(_rng, len(level_buffer), (batch_size, ), p=p_replay)
+        level_ids = jax.random.choice(_rng, len(level_buffer), (batch_size, ), p=p_replay, replace=False)
         return jax.tree_map(lambda x: x[level_ids], level_buffer.level)
 
     def sample(
