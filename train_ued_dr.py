@@ -142,23 +142,37 @@ def make_train(args, eval_args):
             )(
                 _rng, holdout_levels.env_params, actor_state, args.env_workers, eval_hstates
             )
+            metrics["agent_return_on_holdout_set"] = agent_return_on_holdout_set.mean()
+            holdout_set_success_rate = jnp.where(agent_return_on_holdout_set > 0, 1, 0)
+            metrics["holdout_set_success_rate"] = holdout_set_success_rate.sum() / jnp.size(holdout_set_success_rate)
 
             metrics = {
                 **metrics,
                 "SixteenRooms_return":agent_return_on_holdout_set[0].mean(),
+                "SixteenRooms_success_rate":holdout_set_success_rate[0] / len(holdout_set_success_rate[0]),
+
                 "SixteenRooms2_return":agent_return_on_holdout_set[1].mean(),
+                "SixteenRooms2_success_rate":holdout_set_success_rate[1] / len(holdout_set_success_rate[0]),
+
                 "Labyrinth_return":agent_return_on_holdout_set[2].mean(),
+                "Labyrinth_success_rate":holdout_set_success_rate[2] / len(holdout_set_success_rate[0]),
+
                 "LabyrinthFlipped_return":agent_return_on_holdout_set[3].mean(),
+                "LabyrinthFlipped_success_rate":holdout_set_success_rate[3] / len(holdout_set_success_rate[0]),
+
                 "Labyrinth2_return":agent_return_on_holdout_set[4].mean(),
+                "Labyrinth2_success_rate":holdout_set_success_rate[4] / len(holdout_set_success_rate[0]),
+
                 "StandardMaze_return":agent_return_on_holdout_set[5].mean(),
+                "StandardMaze_success_rate":holdout_set_success_rate[5] / len(holdout_set_success_rate[0]),
+
                 "StandardMaze2_return":agent_return_on_holdout_set[6].mean(),
+                "StandardMaze2_success_rate":holdout_set_success_rate[6] / len(holdout_set_success_rate[0]),
+
                 "StandardMaze3_return":agent_return_on_holdout_set[7].mean(),
+                "StandardMaze3_success_rate":holdout_set_success_rate[7] / len(holdout_set_success_rate[0]),
             }
 
-            metrics["agent_return_on_holdout_set"] = agent_return_on_holdout_set.mean()
-            holdout_set_success_rate = jnp.where(agent_return_on_holdout_set > 0, 1, 0)
-            holdout_set_success_rate = holdout_set_success_rate.sum() / jnp.size(holdout_set_success_rate)
-            metrics["holdout_set_success_rate"] = holdout_set_success_rate
             
             carry = (rng, actor_state, critic_state, level_buffer, \
                 train_levels, x_grad, y_grad, actor_hstate, critic_hstate, init_obs, init_state)
