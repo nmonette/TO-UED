@@ -70,14 +70,14 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--train_rollout_len",
         help="Number of environment steps per agent update",
         type=int,
-        default=256,
+        default=20,
     )  # Reference: 20
-    parser.add_argument("--gamma", help="Discount factor", type=float, default=0.995)
+    parser.add_argument("--gamma", help="Discount factor", type=float, default=0.99)
     parser.add_argument(
         "--gae_lambda",
         help="Lambda parameter for Generalized Advantage Estimation",
         type=float,
-        default=0.98,
+        default=0.95,
     )
     parser.add_argument(
         "--entropy_coeff",
@@ -185,7 +185,7 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--p_replay",
         help="Probability of replaying a level from the buffer (vs. random sampling)",
         type=float,
-        default=0.8,
+        default=0.95,
     )
     parser.add_argument(
         "--score_transform",
@@ -230,10 +230,10 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--num_epochs", help="Number of epochs for PPO training", type=int, default=5
     )
     parser.add_argument(
-        "--actor_lr", help="PPO policy learning rate", type=float, default=1e-4
+        "--actor_lr", help="PPO policy learning rate", type=float, default=2e-5
     )
     parser.add_argument(
-        "--critic_lr", help="PPO vf learning rate", type=float, default=1e-4
+        "--critic_lr", help="PPO vf learning rate", type=float, default=4e-5
     )
 
     args, rest_args = parser.parse_known_args(cmd_args)
