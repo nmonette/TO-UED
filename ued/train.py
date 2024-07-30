@@ -116,9 +116,9 @@ def train_agent(
     adv, values, target = jax.vmap(value_fn)(values=rollout.value, rollout=rollout) 
     values = values[:,:-1]
 
-    rollout = rollout.replace(
-        done = jnp.roll(rollout.done, 1, axis=0).at[0].set(False)
-    )
+    # rollout = rollout.replace(
+    #     done = jnp.roll(rollout.done, 1, axis=0).at[0].set(False)
+    # )
     
     agent_train_step_fn = partial(
         agent_train_step,

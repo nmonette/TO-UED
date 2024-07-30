@@ -89,9 +89,7 @@ def make_train(args, eval_args):
                 init_obs=init_obs, 
                 init_state=init_state, 
             )
-
-            jax.debug.print("{}", train_levels.buffer_id)
-
+            
             # --- Sample new levels and agents as required ---
             def sample(rng, level_buffer, eval_buffer, x_grad, y_grad, train_levels, eval_levels, actor_state, critic_state):
                 rng, sample_rng, reset_rng = jax.random.split(rng, 3)
