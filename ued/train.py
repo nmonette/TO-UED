@@ -48,7 +48,7 @@ def agent_train_step(
 
         # --- Calculate actor loss ---
         ratio = jnp.exp(lp - rollout.log_prob)
-        A = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        A = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
         loss_actor1 = ratio * A
         loss_actor2 = (

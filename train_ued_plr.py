@@ -187,9 +187,20 @@ def make_train(args, eval_args):
             return carry, metrics
         
         # Initialize train_levels, eval_levels, hstates
-
-        tile_fn = lambda x: jnp.array([x[0]]).repeat(args.num_agents, axis=0).squeeze()
+        rng, _rng = jax.random.split(rng)
+        level_idxs = jax.random.choice(_rng, len(level_buffer), (args.num_agents, ))
+        tile_fn = lambda x: x[level_idxs]
         init_train_levels = jax.tree_util.tree_map(tile_fn, level_buffer.level)
+
+        rng, _rng = jax.random.split(rng)
+        init_train_levels, level_buffer = level_sampler.sample( 
+            _rng, 
+            level_buffer,
+            init_train_levels,
+            actor_state, 
+            critic_state,
+            0
+        )
 
         # NOTE: batch_reset has been modified to accept a batch of env_params
         rng, _rng = jax.random.split(rng)

@@ -89,6 +89,9 @@ def make_train(args, eval_args):
                 init_obs=init_obs, 
                 init_state=init_state, 
             )
+
+            jax.debug.print("{}", train_levels.buffer_id)
+
             # --- Sample new levels and agents as required ---
             def sample(rng, level_buffer, eval_buffer, x_grad, y_grad, train_levels, eval_levels, actor_state, critic_state):
                 rng, sample_rng, reset_rng = jax.random.split(rng, 3)
@@ -146,6 +149,7 @@ def make_train(args, eval_args):
             rng, _rng = jax.random.split(rng)
             _rng = jax.random.split(_rng, 8)
 
+
             agent_return_on_holdout_set = jax.vmap(
                 lambda r, e, a, ew, hs: eval_agent(r, level_sampler.rollout_manager, e, a, ew, hs),
                 in_axes=(0, 0, None, None, 0)
@@ -160,28 +164,28 @@ def make_train(args, eval_args):
             metrics = {
                 **metrics,
                 "return/SixteenRooms":agent_return_on_holdout_set[0].mean(),
-                "solve_rate/SixteenRooms":holdout_set_success_rate[0] / len(holdout_set_success_rate[0]),
+                "solve_rate/SixteenRooms":holdout_set_success_rate[0].sum() / len(holdout_set_success_rate[0]),
 
                 "return/SixteenRooms2":agent_return_on_holdout_set[1].mean(),
-                "solve_rate/SixteenRooms2":holdout_set_success_rate[1] / len(holdout_set_success_rate[0]),
+                "solve_rate/SixteenRooms2":holdout_set_success_rate[1].sum() / len(holdout_set_success_rate[0]),
 
                 "return/Labyrinth":agent_return_on_holdout_set[2].mean(),
-                "solve_rate/Labyrinth":holdout_set_success_rate[2] / len(holdout_set_success_rate[0]),
+                "solve_rate/Labyrinth":holdout_set_success_rate[2].sum() / len(holdout_set_success_rate[0]),
 
                 "return/LabyrinthFlipped":agent_return_on_holdout_set[3].mean(),
-                "solve_rate/LabyrinthFlipped":holdout_set_success_rate[3] / len(holdout_set_success_rate[0]),
+                "solve_rate/LabyrinthFlipped":holdout_set_success_rate[3].sum() / len(holdout_set_success_rate[0]),
 
                 "return/Labyrinth2":agent_return_on_holdout_set[4].mean(),
-                "solve_rate/Labyrinth2":holdout_set_success_rate[4] / len(holdout_set_success_rate[0]),
+                "solve_rate/Labyrinth2":holdout_set_success_rate[4].sum() / len(holdout_set_success_rate[0]),
 
                 "return/StandardMaze":agent_return_on_holdout_set[5].mean(),
-                "solve_rate/StandardMaze":holdout_set_success_rate[5] / len(holdout_set_success_rate[0]),
+                "solve_rate/StandardMaze":holdout_set_success_rate[5].sum() / len(holdout_set_success_rate[0]),
 
                 "return/StandardMaze2":agent_return_on_holdout_set[6].mean(),
-                "solve_rate/StandardMaze2":holdout_set_success_rate[6] / len(holdout_set_success_rate[0]),
+                "solve_rate/StandardMaze2":holdout_set_success_rate[6].sum() / len(holdout_set_success_rate[0]),
 
                 "return/StandardMaze3":agent_return_on_holdout_set[7].mean(),
-                "solve_rate/StandardMaze3":holdout_set_success_rate[7] / len(holdout_set_success_rate[0]),
+                "solve_rate/StandardMaze3":holdout_set_success_rate[7].sum() / len(holdout_set_success_rate[0]),
             }
             
             carry = (rng, actor_state, critic_state, level_buffer, eval_buffer, \
@@ -190,9 +194,19 @@ def make_train(args, eval_args):
             return carry, metrics
         
         # --- Initialize train_levels, eval_levels, hstates ---
-        tile_fn = lambda x: jnp.array([x[0]]).repeat(args.num_agents, axis=0).squeeze()
-        init_train_levels = jax.tree_util.tree_map(tile_fn, level_buffer.level)
-        init_eval_levels = jax.tree_util.tree_map(tile_fn, eval_buffer.level)
+        rng, train_rng, eval_rng = jax.random.split(rng, 3)
+        train_idxs = jax.random.choice(train_rng, len(level_buffer), (args.num_agents, ))
+        eval_idxs = jax.random.choice(eval_rng, len(eval_buffer), (args.num_agents, ))
+        train_fn = lambda x: x[train_idxs]
+        eval_fn = lambda x: x[eval_idxs]
+        init_train_levels = jax.tree_util.tree_map(train_fn, level_buffer.level)
+        init_eval_levels = jax.tree_util.tree_map(eval_fn, eval_buffer.level)
+
+        rng, _rng = jax.random.split(rng)
+        zeros = jnp.zeros_like(level_buffer.score)
+        level_buffer, eval_buffer, init_train_levels, init_eval_levels, x_grad, y_grad, eval_regret = level_sampler.sample(
+            _rng, level_buffer, eval_buffer, zeros, zeros, actor_state, critic_state
+        )
 
         # NOTE: batch_reset has been modified to accept a batch of env_params
         rng, _rng = jax.random.split(rng)
@@ -200,10 +214,9 @@ def make_train(args, eval_args):
         hstate = Actor.initialize_carry(init_state.time.shape)
 
         # --- Stack and return metrics ---
-        zeros = jnp.zeros_like(level_buffer.score)
         carry = (rng, actor_state, critic_state, level_buffer, eval_buffer, \
-                init_train_levels, init_eval_levels, zeros, zeros, \
-                hstate, hstate, init_obs, init_state, 0.)
+                init_train_levels, init_eval_levels, x_grad, y_grad, \
+                hstate, hstate, init_obs, init_state, eval_regret)
         carry, metrics = jax.lax.scan(
             _ued_train_loop, carry, jnp.arange(args.train_steps), args.train_steps
         )

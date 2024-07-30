@@ -27,7 +27,7 @@ class GDSampler(LevelSampler):
             env_obs=env_obs,
             env_state=env_state,
         )
-
+    
     def _sample_actions(
         self, 
         rng, 
