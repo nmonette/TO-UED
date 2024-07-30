@@ -115,6 +115,10 @@ def train_agent(
     value_fn = partial(compute_adv_target, gamma=gamma, gae_lambda=gae_lambda)
     adv, values, target = jax.vmap(value_fn)(values=rollout.value, rollout=rollout) 
     values = values[:,:-1]
+
+    rollout = rollout.replace(
+        done = jnp.roll(rollout.done, 1, axis=0).at[0].set(False)
+    )
     
     agent_train_step_fn = partial(
         agent_train_step,
@@ -157,6 +161,7 @@ def train_agent(
             minibatch_fn(target),
             jax.tree_util.tree_map(minibatch_fn, hstate)
         )
+
         (actor_state, critic_state), metrics = jax.lax.scan(
             minibatch, (actor_state, critic_state), minibatches
         ) 
