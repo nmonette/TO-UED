@@ -19,6 +19,10 @@ def init_logger(args):
         group=args.wandb_group,
         job_type="train",
     )
+
+    wandb.define_metric("solve_rate/*")
+    wandb.define_metric("return/*")
+
     os.mkdir(os.path.join(wandb.run.dir, CKPT_DIR))
 
 

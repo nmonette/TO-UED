@@ -118,7 +118,7 @@ def make_train(args, eval_args):
             _rng = jax.random.split(_rng, 16)
 
 
-            metrics["agent_return_on_train_set"] = jax.vmap(
+            metrics["return/train_mean"] = jax.vmap(
                 lambda r, e, a, ew, hs: eval_agent(r, level_sampler.rollout_manager, e, a, ew, hs),
                 in_axes=(0, 0, None, None, 0)
             )(
@@ -134,7 +134,7 @@ def make_train(args, eval_args):
             rng, _rng = jax.random.split(rng)
             _rng = jax.random.split(_rng, 16)
 
-            metrics["agent_return_on_random_set"] = jax.vmap(
+            metrics["return/random_mean"] = jax.vmap(
                 lambda r, e, a, ew, hs: eval_agent(r, level_sampler.rollout_manager, e, a, ew, hs),
                 in_axes=(0, 0, None, None, 0)
             )(
@@ -153,35 +153,35 @@ def make_train(args, eval_args):
                 _rng, holdout_levels.env_params, actor_state, args.env_workers, eval_hstates
             )
 
-            metrics["agent_return_on_holdout_set"] = agent_return_on_holdout_set.mean()
+            metrics["return/holdout_mean"] = agent_return_on_holdout_set.mean()
             holdout_set_success_rate = jnp.where(agent_return_on_holdout_set > 0, 1, 0)
-            metrics["holdout_set_success_rate"] = holdout_set_success_rate.sum() / jnp.size(holdout_set_success_rate)
+            metrics["solve_rate/holdout_mean"] = holdout_set_success_rate.sum() / jnp.size(holdout_set_success_rate)
 
             metrics = {
                 **metrics,
-                "SixteenRooms_return":agent_return_on_holdout_set[0].mean(),
-                "SixteenRooms_success_rate":holdout_set_success_rate[0] / len(holdout_set_success_rate[0]),
+                "return/SixteenRooms":agent_return_on_holdout_set[0].mean(),
+                "solve_rate/SixteenRooms":holdout_set_success_rate[0] / len(holdout_set_success_rate[0]),
 
-                "SixteenRooms2_return":agent_return_on_holdout_set[1].mean(),
-                "SixteenRooms2_success_rate":holdout_set_success_rate[1] / len(holdout_set_success_rate[0]),
+                "return/SixteenRooms2":agent_return_on_holdout_set[1].mean(),
+                "solve_rate/SixteenRooms2":holdout_set_success_rate[1] / len(holdout_set_success_rate[0]),
 
-                "Labyrinth_return":agent_return_on_holdout_set[2].mean(),
-                "Labyrinth_success_rate":holdout_set_success_rate[2] / len(holdout_set_success_rate[0]),
+                "return/Labyrinth":agent_return_on_holdout_set[2].mean(),
+                "solve_rate/Labyrinth":holdout_set_success_rate[2] / len(holdout_set_success_rate[0]),
 
-                "LabyrinthFlipped_return":agent_return_on_holdout_set[3].mean(),
-                "LabyrinthFlipped_success_rate":holdout_set_success_rate[3] / len(holdout_set_success_rate[0]),
+                "return/LabyrinthFlipped":agent_return_on_holdout_set[3].mean(),
+                "solve_rate/LabyrinthFlipped":holdout_set_success_rate[3] / len(holdout_set_success_rate[0]),
 
-                "Labyrinth2_return":agent_return_on_holdout_set[4].mean(),
-                "Labyrinth2_success_rate":holdout_set_success_rate[4] / len(holdout_set_success_rate[0]),
+                "return/Labyrinth2":agent_return_on_holdout_set[4].mean(),
+                "solve_rate/Labyrinth2":holdout_set_success_rate[4] / len(holdout_set_success_rate[0]),
 
-                "StandardMaze_return":agent_return_on_holdout_set[5].mean(),
-                "StandardMaze_success_rate":holdout_set_success_rate[5] / len(holdout_set_success_rate[0]),
+                "return/StandardMaze":agent_return_on_holdout_set[5].mean(),
+                "solve_rate/StandardMaze":holdout_set_success_rate[5] / len(holdout_set_success_rate[0]),
 
-                "StandardMaze2_return":agent_return_on_holdout_set[6].mean(),
-                "StandardMaze2_success_rate":holdout_set_success_rate[6] / len(holdout_set_success_rate[0]),
+                "return/StandardMaze2":agent_return_on_holdout_set[6].mean(),
+                "solve_rate/StandardMaze2":holdout_set_success_rate[6] / len(holdout_set_success_rate[0]),
 
-                "StandardMaze3_return":agent_return_on_holdout_set[7].mean(),
-                "StandardMaze3_success_rate":holdout_set_success_rate[7] / len(holdout_set_success_rate[0]),
+                "return/StandardMaze3":agent_return_on_holdout_set[7].mean(),
+                "solve_rate/StandardMaze3":holdout_set_success_rate[7] / len(holdout_set_success_rate[0]),
             }
             
             carry = (rng, actor_state, critic_state, level_buffer, eval_buffer, \
