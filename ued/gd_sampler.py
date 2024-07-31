@@ -101,8 +101,8 @@ class GDSampler(LevelSampler):
                 x - 0.01 * grad_fn(x, g), 1 / (len(train_buffer) * jnp.square(timestamp)),
             ), xt, g), None
         
-        x_g = jnp.zeros(len(train_buffer)).at[train_levels.buffer_id].set(-eval_regret)
-        y_g = jnp.zeros(len(train_buffer)).at[eval_levels.buffer_id].set(eval_regret)
+        x_g = jnp.zeros(len(train_buffer)).at[train_levels.buffer_id].set(eval_regret)
+        y_g = jnp.zeros(len(train_buffer)).at[eval_levels.buffer_id].set(-eval_regret)
 
         (x, _, _), _ = jax.lax.scan(argmin, (jnp.full_like(train_buffer.score, 1 / len(train_buffer)), train_buffer.score, x_g), length=1000)
         (y, _, _), _ = jax.lax.scan(argmin, (jnp.full_like(train_buffer.score, 1 / len(train_buffer)), train_buffer.score, y_g), length=1000)
