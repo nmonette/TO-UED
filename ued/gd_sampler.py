@@ -84,7 +84,7 @@ class GDSampler(LevelSampler):
         # --- Sample levels ---
         rng, train_rng, eval_rng = jax.random.split(rng, 3)
         train_buffer = self._reset_lowest_scoring(train_rng, train_buffer, batch_size)
-        eval_buffer = self._reset_lowest_scoring(eval_rng, train_buffer, batch_size)
+        eval_buffer = self._reset_lowest_scoring(eval_rng, eval_buffer, batch_size)
 
         train_buffer = train_buffer.replace(
             score = projection_simplex_truncated(train_buffer.score, self.args.ogd_trunc_size)
