@@ -43,7 +43,6 @@ class PLRSampler(GDSampler):
         level_buffer,
         train_levels,
         actor_state, 
-        critic_state,
         timestamp
     ):
         batch_size = len(train_levels.buffer_id)
@@ -52,7 +51,7 @@ class PLRSampler(GDSampler):
 
         rng, agent_rng, score_rng = jax.random.split(rng, 3)
         agent_rng = jax.random.split(agent_rng, batch_size)
-        eval_agents = jax.vmap(self._create_eval_agent, in_axes=(0, 0, None, None))(agent_rng, train_levels, actor_state, critic_state)
+        eval_agents = jax.vmap(self._create_eval_agent, in_axes=(0, 0, None))(agent_rng, train_levels, actor_state)
             
         score_rng = jax.random.split(rng, batch_size)
         scores = pmap(

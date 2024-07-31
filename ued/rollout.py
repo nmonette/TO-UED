@@ -49,12 +49,12 @@ class RolloutWrapper:
 
     # --- ENVIRONMENT ROLLOUT ---
     def batch_rollout_single_env(
-        self, rng, actor_state, critic_state, env_params, init_obs, init_state, actor_hstate, critic_hstate, eval=False
+        self, rng, actor_state, env_params, init_obs, init_state, actor_hstate, eval=False
     ):
         """Evaluate an agent on a single environment over a batch of workers."""
         rng = jax.random.split(rng, init_obs.image.shape[0])
-        return jax.vmap(self.single_rollout, in_axes=(0, None, None, None, 0, 0, 0, 0, None))(
-            rng, actor_state, critic_state, env_params, init_obs, init_state, actor_hstate, critic_hstate, eval
+        return jax.vmap(self.single_rollout, in_axes=(0, None, None, 0, 0, 0, None))(
+            rng, actor_state, env_params, init_obs, init_state, actor_hstate, eval
         )
 
     # --- ENVIRONMENT RESET ---
@@ -73,30 +73,26 @@ class RolloutWrapper:
 
     # --- ENVIRONMENT ROLLOUT ---
     def batch_rollout(
-        self, rng, actor_state, critic_state, env_params, init_obs, init_state, actor_hstate, critic_hstate,  eval=False
+        self, rng, actor_state, env_params, init_obs, init_state, actor_hstate, eval=False
     ):
         """Evaluate an agent on a single environment over a batch of workers."""
         rng = jax.random.split(rng, init_state.time.shape[0])
-        return jax.vmap(self.single_rollout, in_axes=(0, None, None, 0, 0, 0, 0, 0, None))(
-            rng, actor_state, critic_state, env_params, init_obs, init_state, actor_hstate, critic_hstate, eval
+        return jax.vmap(self.single_rollout, in_axes=(0, None, 0, 0, 0, 0, None))(
+            rng, actor_state, env_params, init_obs, init_state, actor_hstate, eval
         )
 
     def single_rollout(
-        self, rng, actor_state, critic_state, env_params, init_obs, init_state, actor_hstate, critic_hstate, eval=False
+        self, rng, actor_state, env_params, init_obs, init_state, hstate, eval=False
     ):
         """Rollout an episode."""
 
         def policy_step(state_input, _):
-            rng, obs, state, actor_state, critic_state, actor_hstate, critic_hstate, cum_reward, valid_mask, last_done = state_input
+            rng, obs, state, actor_state, hstate, cum_reward, valid_mask, last_done = state_input
             rng, _rng = jax.random.split(rng)
             reshaped_obs = obs.replace(
                 image = obs.image.reshape(1, *obs.image.shape)
             )
-            actor_hstate, action_probs = actor_state.apply_fn({"params": actor_state.params}, (reshaped_obs, last_done.reshape(1,1)), actor_hstate)
-            
-            value = None
-            if critic_state is not None:
-                critic_hstate, value = critic_state.apply_fn({"params": critic_state.params}, (reshaped_obs, last_done.reshape(1,1)), critic_hstate)
+            hstate, action_probs, value = actor_state.apply_fn({"params": actor_state.params}, (reshaped_obs, last_done.reshape(1,1)), hstate)
     
             action = jax.random.choice(_rng, action_probs.shape[-1], p=action_probs.squeeze())
             rng, _rng = jax.random.split(rng)
@@ -110,9 +106,7 @@ class RolloutWrapper:
                 next_obs,
                 next_state,
                 actor_state,
-                critic_state,
-                actor_hstate,
-                critic_hstate,
+                hstate,
                 new_cum_reward,
                 new_valid_mask,
                 done
@@ -130,9 +124,7 @@ class RolloutWrapper:
                 init_obs,
                 init_state,
                 actor_state,
-                critic_state, 
-                actor_hstate,
-                critic_hstate,
+                hstate,
                 jnp.float32(0.0),
                 jnp.float32(1.0),
                 jnp.full((), False)
@@ -142,21 +134,20 @@ class RolloutWrapper:
         )
         if self.return_info:
             rollout, info = rollout
-        end_obs, end_state, actor_hstate, cum_return, critic_hstate = carry_out[1], carry_out[2], carry_out[5], carry_out[7], carry_out[6]
+        end_obs, end_state, hstate, cum_return = carry_out[1], carry_out[2], carry_out[4], carry_out[5]
 
         # --- Add final value onto end of rollouts ---
-        if critic_state is not None:
-            reshaped_obs = end_obs.replace(
-                image = end_obs.image.reshape(1, *end_obs.image.shape)
-            )
-            critic_hstate, value = critic_state.apply_fn({"params": critic_state.params}, (reshaped_obs, jnp.full((1,1), False)), critic_hstate)
-            rollout = rollout.replace(
-                value = jnp.append(rollout.value, value.reshape(1,1), axis=0).squeeze()
-            )
+        reshaped_obs = end_obs.replace(
+            image = end_obs.image.reshape(1, *end_obs.image.shape)
+        )
+        hstate, _, value = actor_state.apply_fn({"params": actor_state.params}, (reshaped_obs, jnp.full((1,1), False)), hstate)
+        rollout = rollout.replace(
+            value = jnp.append(rollout.value, value.reshape(1,1), axis=0).squeeze()
+        )
 
         if self.return_info:
-            return rollout, end_obs, end_state, actor_hstate, critic_hstate, cum_return, info
-        return rollout, end_obs, end_state, actor_hstate, critic_hstate, cum_return
+            return rollout, end_obs, end_state, hstate, cum_return, info
+        return rollout, end_obs, end_state, hstate, cum_return
 
     def optimal_return(self, env_params, max_rollout_len, return_all):
         """Return the optimal expected return for the given set of environment parameters."""

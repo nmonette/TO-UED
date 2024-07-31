@@ -60,7 +60,6 @@ class GDSampler(LevelSampler):
         prev_x_grad,
         prev_y_grad,
         actor_state, 
-        critic_state,
     ):
         # --- Calculate train and eval distributions ---
         x = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * prev_x_grad, self.args.ogd_trunc_size)
@@ -103,7 +102,7 @@ class GDSampler(LevelSampler):
 
         agent_rng = jax.random.split(eval_rng, batch_size)
     
-        eval_agents = jax.vmap(self._create_eval_agent, in_axes=(0, 0, None, None))(agent_rng, eval_levels, actor_state, critic_state)
+        eval_agents = jax.vmap(self._create_eval_agent, in_axes=(0, 0, None))(agent_rng, eval_levels, actor_state)
 
         rng, _rng = jax.random.split(rng)
         

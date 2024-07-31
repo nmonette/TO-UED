@@ -63,7 +63,7 @@ class ActorCritic(nn.Module):
         dir_embed = jax.nn.one_hot(obs.agent_dir, 4)
         dir_embed = nn.Dense(5, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0), name="scalar_embed")(dir_embed)
         
-        embedding = jnp.append(img_embed, dir_embed, axis=-1)
+        embedding = jnp.append(img_embed, dir_embed.reshape(-1, 5), axis=-1)
 
         hidden, embedding = ResetRNN(nn.OptimizedLSTMCell(features=256))((embedding, dones), initial_carry=hidden)
 
@@ -77,6 +77,10 @@ class ActorCritic(nn.Module):
         critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0), name="critic1")(critic)
 
         return hidden, pi, jnp.squeeze(critic, axis=-1)
+    
+    @staticmethod
+    def initialize_carry(batch_dims):
+        return nn.OptimizedLSTMCell(features=256).initialize_carry(jax.random.PRNGKey(0), (*batch_dims, 256))
 
 class Actor(nn.Module):
     action_dim: Sequence[int]
@@ -148,8 +152,8 @@ def eval_agent(rng, rollout_manager, env_params, actor_train_state, num_workers,
     rng, _rng = jax.random.split(rng)
     env_obs, env_state = rollout_manager.batch_reset_single_env(_rng, env_params, num_workers)
     rng, _rng = jax.random.split(rng)
-    _, _, _, _, _, tot_reward = rollout_manager.batch_rollout_single_env(
-        _rng, actor_train_state, None, env_params, env_obs, env_state, init_hstate, init_hstate, eval=True
+    _, _, _, _, tot_reward = rollout_manager.batch_rollout_single_env(
+        _rng, actor_train_state, env_params, env_obs, env_state, init_hstate, eval=True
     )
     return tot_reward.mean()
 
@@ -161,8 +165,8 @@ def eval_agent_nomean(rng, rollout_manager, env_params, actor_train_state, num_w
     rng, _rng = jax.random.split(rng)
     env_obs, env_state = rollout_manager.batch_reset_single_env(_rng, env_params, num_workers)
     rng, _rng = jax.random.split(rng)
-    rollout, end_obs, end_state, actor_hstate, critic_hstate, tot_reward = rollout_manager.batch_rollout_single_env(
-        _rng, actor_train_state, None, env_params, env_obs, env_state, init_hstate, init_hstate, eval=True
+    rollout, end_obs, end_state, actor_hstate, tot_reward = rollout_manager.batch_rollout_single_env(
+        _rng, actor_train_state, env_params, env_obs, env_state, init_hstate, eval=True
     )
 
     return tot_reward
@@ -173,3 +177,6 @@ def _get_policy_model(n_actions):
 
 def _get_critic_model():
     return Critic()
+
+def _get_actor_critic_model(n_actions):
+    return ActorCritic(n_actions)

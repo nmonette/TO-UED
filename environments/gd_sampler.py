@@ -128,9 +128,6 @@ class GDSampler(LevelSampler):
 
         # --- Hack to fix function mismatch ---
         agent_states = agent_states.replace(
-            critic_state=agent_states.critic_state.replace(
-                tx=old_agents.critic_state.tx, apply_fn=old_agents.critic_state.apply_fn
-            ),
             actor_state=agent_states.actor_state.replace(
                 tx=old_agents.actor_state.tx, apply_fn=old_agents.actor_state.apply_fn
             ),

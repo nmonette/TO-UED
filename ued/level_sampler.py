@@ -344,9 +344,6 @@ class LevelSampler:
         # --- Return updated level buffer and agents ---
         # TODO: Had a function mismatch error without the below hack, need to investigate further.
         agent_states = agent_states.replace(
-            critic_state=agent_states.critic_state.replace(
-                tx=old_agents.critic_state.tx, apply_fn=old_agents.critic_state.apply_fn
-            ),
             actor_state=agent_states.actor_state.replace(
                 tx=old_agents.actor_state.tx, apply_fn=old_agents.actor_state.apply_fn
             ),
@@ -369,12 +366,12 @@ class LevelSampler:
         agent_hypers = self.agent_hypers
         if value_critic:
             agent_hypers = agent_hypers.replace(critic_dims=1)
-        actor_state, critic_state = create_agent_rnn(
+        actor_state = create_agent_rnn(
             agent_rng, agent_hypers, self.num_actions, self.obs_shape
         )
         return AgentState(
             actor_state=actor_state,
-            critic_state=critic_state,
+            critic_state=None,
             level=level,
             env_obs=env_obs,
             env_state=env_state,
@@ -401,10 +398,9 @@ class LevelSampler:
         if self.env_name != "Maze-v0" or not self.args.true_regret:
             # --- Train antagonist agent ---
             rng, _rng = jax.random.split(rng)
-            (ant_actor_state, ant_critic_state), _ = train_eval_agent(
+            (ant_actor_state), _ = train_eval_agent(
                 rng,
                 actor_state=ant_agent_state.actor_state,
-                critic_state=ant_agent_state.critic_state,
                 env_params=ant_agent_state.level.env_params,
                 rollout_manager=self.rollout_manager,
                 num_epochs=self.args.num_epochs,
@@ -420,7 +416,6 @@ class LevelSampler:
             )
             ant_agent_state = ant_agent_state.replace(
                 actor_state = ant_actor_state,
-                critic_state = ant_critic_state
             )
             rng, _rng = jax.random.split(rng)
             ant_agent_return = eval_fn(

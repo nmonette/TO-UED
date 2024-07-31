@@ -8,7 +8,7 @@ from models.optim import create_optimizer
 from environments.environments import get_agent_hypers
 
 from ued.rnn import (
-    _get_critic_model as _get_rnn_critic,
+    _get_actor_critic_model as _get_actor_critic_model,
     _get_policy_model as _get_rnn_policy,
 )
 
@@ -87,8 +87,7 @@ def create_agent_rnn(
     if type(obs_shape) is int:
         obs_shape = (obs_shape,)
     actor_rng, critic_rng = jax.random.split(rng)
-    policy_model = _get_rnn_policy(action_n)
-    critic_model = _get_rnn_critic()
+    policy_model = _get_actor_critic_model(action_n)
 
     actor_train_state = _create_rnn_train_state(
         actor_rng,
@@ -99,17 +98,8 @@ def create_agent_rnn(
         agent_params.max_grad_norm,
         policy_model.initialize_carry(())
     )
-    critic_train_state = _create_rnn_train_state(
-        critic_rng,
-        critic_model,
-        obs_shape,
-        agent_params.optimizer,
-        agent_params.critic_learning_rate,
-        agent_params.max_grad_norm,
-        policy_model.initialize_carry(())
-    )
     
-    return actor_train_state, critic_train_state
+    return actor_train_state
 
 def create_value_critic(
     rng: chex.PRNGKey, agent_params: AgentHyperparams, obs_shape: tuple
