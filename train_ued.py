@@ -74,7 +74,7 @@ def make_train(args, eval_args):
         # --- TRAIN LOOP ---
         def _ued_train_loop(carry, t):
             rng, actor_state, critic_state, level_buffer, eval_buffer, \
-                train_levels, eval_levels, x_grad, y_grad, \
+                train_levels, eval_levels, \
                     actor_hstate, critic_hstate, init_obs, init_state, eval_regret = carry
             
             # --- Train agents on sampled levels ---
@@ -91,20 +91,20 @@ def make_train(args, eval_args):
             )
             
             # --- Sample new levels and agents as required ---
-            def sample(rng, level_buffer, eval_buffer, x_grad, y_grad, train_levels, eval_levels, actor_state, critic_state):
+            def sample(rng, level_buffer, eval_buffer, train_levels, eval_levels, actor_state, critic_state):
                 rng, sample_rng, reset_rng = jax.random.split(rng, 3)
-                level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, eval_regret = level_sampler.sample(
-                    sample_rng, level_buffer, eval_buffer, x_grad, y_grad, actor_state, critic_state
+                level_buffer, eval_buffer, train_levels, eval_levels, eval_regret = level_sampler.sample(
+                    sample_rng, level_buffer, eval_buffer, train_levels, eval_levels, actor_state, critic_state, t
                 )
                 init_obs, init_state = level_sampler.rollout_manager.batch_reset(reset_rng, init_train_levels.env_params)
                 hstate = Actor.initialize_carry(init_state.time.shape)
-                return level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, hstate, hstate, init_obs, init_state, eval_regret
+                return level_buffer, eval_buffer, train_levels, eval_levels, hstate, hstate, init_obs, init_state, eval_regret
 
-            def identity(rng, level_buffer, eval_buffer, x_grad, y_grad, train_levels, eval_levels, actor_state, critic_state):
-                return level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, actor_hstate, critic_hstate, init_obs, init_state, eval_regret
+            def identity(rng, level_buffer, eval_buffer, train_levels, eval_levels, actor_state, critic_state):
+                return level_buffer, eval_buffer, train_levels, eval_levels, actor_hstate, critic_hstate, init_obs, init_state, eval_regret
             
-            level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, actor_hstate, critic_hstate, init_obs, init_state, eval_regret = jax.lax.cond(
-                t % args.regret_frequency == 0, sample, identity, rng, level_buffer, eval_buffer, x_grad, y_grad, train_levels, eval_levels, actor_state, critic_state
+            level_buffer, eval_buffer, train_levels, eval_levels, hstate, hstate, init_obs, init_state, eval_regret = jax.lax.cond(
+                t % args.regret_frequency == 0, sample, identity, rng, level_buffer, eval_buffer, train_levels, eval_levels, actor_state, critic_state
             )
 
             metrics["eval_regret"] = eval_regret
@@ -187,7 +187,7 @@ def make_train(args, eval_args):
             }
             
             carry = (rng, actor_state, critic_state, level_buffer, eval_buffer, \
-                train_levels, eval_levels, x_grad, y_grad, actor_hstate, critic_hstate, init_obs, init_state, eval_regret)
+                train_levels, eval_levels, actor_hstate, critic_hstate, init_obs, init_state, eval_regret)
             
             return carry, metrics
         
@@ -201,9 +201,8 @@ def make_train(args, eval_args):
         init_eval_levels = jax.tree_util.tree_map(eval_fn, eval_buffer.level)
 
         rng, _rng = jax.random.split(rng)
-        zeros = jnp.zeros_like(level_buffer.score)
-        level_buffer, eval_buffer, init_train_levels, init_eval_levels, x_grad, y_grad, eval_regret = level_sampler.sample(
-            _rng, level_buffer, eval_buffer, zeros, zeros, actor_state, critic_state
+        level_buffer, eval_buffer, init_train_levels, init_eval_levels, eval_regret = level_sampler.sample(
+            _rng, level_buffer, eval_buffer, init_train_levels, init_eval_levels, actor_state, critic_state, 1
         )
 
         # NOTE: batch_reset has been modified to accept a batch of env_params
@@ -213,7 +212,7 @@ def make_train(args, eval_args):
 
         # --- Stack and return metrics ---
         carry = (rng, actor_state, critic_state, level_buffer, eval_buffer, \
-                init_train_levels, init_eval_levels, x_grad, y_grad, \
+                init_train_levels, init_eval_levels, \
                 hstate, hstate, init_obs, init_state, eval_regret)
         carry, metrics = jax.lax.scan(
             _ued_train_loop, carry, jnp.arange(args.train_steps), args.train_steps

@@ -8,6 +8,8 @@ from .rnn import eval_agent
 from util import *
 from util.jax import pmap
 
+from functools import partial
+
 class GDSampler(LevelSampler):
     def __init__(self, args, fixed_eval = None):
         super().__init__(args)
@@ -34,7 +36,7 @@ class GDSampler(LevelSampler):
         buffer,
         batch_size
     ):
-        @partial(jax.grad, has_aux=True)
+        # @partial(jax.grad, has_aux=True)
         def sample_action(policy, _rng, bern, buffer):
             unseen_total = buffer.new.sum()
             policy = jax.lax.select(jnp.logical_and(bern, unseen_total > 0), policy, jnp.where(buffer.new, 1 / unseen_total, 0.))
@@ -42,65 +44,32 @@ class GDSampler(LevelSampler):
             action = jax.random.choice(_rng, jnp.arange(len(buffer)), p=policy)
 
             # Returning the gradient (see: REINFORCE)
-            return jnp.log(policy[action] + 1e-6), action
+            return action # jnp.log(policy[action] + 1e-6), action
         
         rng, _rng = jax.random.split(rng)        
         bern = jax.random.bernoulli(_rng, self.p_replay, shape=(batch_size, ))
 
         rng = jax.random.split(rng, batch_size)
-        lp, level_ids = jax.vmap(sample_action, in_axes=(None, 0, 0, None))(buffer.score, rng, bern, buffer)
+        level_ids = jax.vmap(sample_action, in_axes=(None, 0, 0, None))(buffer.score, rng, bern, buffer)
 
-        return lp, level_ids
+        return level_ids
     
     def sample(
         self, 
         rng, 
         train_buffer, 
         eval_buffer,
-        prev_x_grad,
-        prev_y_grad,
+        train_levels,
+        eval_levels,
         actor_state, 
         critic_state,
+        timestamp
     ):
-        # --- Calculate train and eval distributions ---
-        x = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * prev_x_grad, self.args.ogd_trunc_size)
-        y = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * prev_y_grad, self.args.ogd_trunc_size)
-       
         batch_size = self.args.num_agents
         rng, _rng, eval_rng = jax.random.split(rng, 3)
         score_rng = jax.random.split(_rng, batch_size)
 
-        new_train = train_buffer.replace(score=x)
-
-        if self.fixed_eval is None:
-            new_eval = eval_buffer.replace(
-            score=y
-        ) 
-        else:
-            new_eval = eval_buffer.replace(
-                score=self.fixed_eval
-            ) 
-        
-        # --- Sample levels ---
-        rng, train_rng, eval_rng = jax.random.split(rng, 3)
-        train_buffer = self._reset_lowest_scoring(train_rng, train_buffer, batch_size)
-        eval_buffer = self._reset_lowest_scoring(eval_rng, train_buffer, batch_size)
-
-        train_buffer = train_buffer.replace(
-            score = projection_simplex_truncated(train_buffer.score, self.args.ogd_trunc_size)
-        )
-
-        eval_buffer = eval_buffer.replace(
-            score = projection_simplex_truncated(eval_buffer.score, self.args.ogd_trunc_size)
-        )
-
-        rng, x_rng, y_rng = jax.random.split(rng, 3)
-        x_lp, x_level_ids = self._sample_actions(x_rng, new_train, batch_size)
-        y_lp, y_level_ids = self._sample_actions(y_rng, new_eval, batch_size)
-
-        train_levels = jax.tree_util.tree_map(lambda x: x[x_level_ids], train_buffer.level)
-        eval_levels = jax.tree_util.tree_map(lambda x: x[y_level_ids], eval_buffer.level)
-
+        # --- Calculate regret scores (agents observe a reward) ---
         agent_rng = jax.random.split(eval_rng, batch_size)
     
         eval_agents = jax.vmap(self._create_eval_agent, in_axes=(0, 0, None, None))(agent_rng, eval_levels, actor_state, critic_state)
@@ -111,22 +80,56 @@ class GDSampler(LevelSampler):
             self._compute_algorithmic_regret, self.num_mini_batches
         )(score_rng, eval_agents)
         
-        eval_dist = jnp.unique(y_level_ids, return_counts=True, size=len(eval_agents.level.buffer_id))[1]
+        eval_dist = jnp.unique(eval_levels.buffer_id, return_counts=True, size=len(eval_agents.level.buffer_id))[1]
         eval_dist = eval_dist / eval_dist.sum()
 
         eval_regret = jnp.dot(eval_dist, eval_regrets)
 
-        x_grad = -(x_lp * eval_regret).mean(axis=0)
-        y_grad = (y_lp * eval_regret).mean(axis=0)
+        # --- Update sampling distributions ---
+        eta = jnp.pow(timestamp, -1/2)
+        eps = jnp.pow(timestamp, -1/6)
+
+        def argmin(carry, _):
+            x, xt, g = carry
+
+            @jax.grad
+            def grad_fn(x, g):
+                g = g / x + eps * jnp.log(x + 1e-8)
+                return x.T @ g + (1 / eta) * kl_divergence(x, xt)
+
+            return (projection_simplex_truncated(
+                x - 0.01 * grad_fn(x, g), 1 / (len(train_buffer) * jnp.square(timestamp)),
+            ), xt, g), None
+        
+        x_g = jnp.zeros(len(train_buffer)).at[train_levels.buffer_id].set(-eval_regret)
+        y_g = jnp.zeros(len(train_buffer)).at[eval_levels.buffer_id].set(eval_regret)
+
+        (x, _, _), _ = jax.lax.scan(argmin, (jnp.full_like(train_buffer.score, 1 / len(train_buffer)), train_buffer.score, x_g), length=1000)
+        (y, _, _), _ = jax.lax.scan(argmin, (jnp.full_like(train_buffer.score, 1 / len(train_buffer)), train_buffer.score, y_g), length=1000)
 
         # --- Update buffers for next round of sampling ---
         train_buffer = train_buffer.replace(
-            score = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * x_grad, self.args.ogd_trunc_size),
-            new = train_buffer.new.at[x_level_ids].set(False)
+            score = x,
+            new = train_buffer.new.at[train_levels.buffer_id].set(False)
         ) 
         eval_buffer = eval_buffer.replace(
-            score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),
-            new = train_buffer.new.at[y_level_ids].set(False)
+            score = y,
+            new = train_buffer.new.at[train_levels.buffer_id].set(False)
         )
+
+        # --- Sample levels ---
+        rng, train_rng, eval_rng = jax.random.split(rng, 3)
+        train_buffer = self._reset_lowest_scoring(train_rng, train_buffer, batch_size)
+        eval_buffer = self._reset_lowest_scoring(eval_rng, eval_buffer, batch_size)
+
+        rng, x_rng, y_rng = jax.random.split(rng, 3)
+        x_level_ids = self._sample_actions(x_rng, train_buffer, batch_size)
+        y_level_ids = self._sample_actions(y_rng, eval_buffer, batch_size)
+
+        train_levels = jax.tree_util.tree_map(lambda x: x[x_level_ids], train_buffer.level)
+        eval_levels = jax.tree_util.tree_map(lambda x: x[y_level_ids], eval_buffer.level)
+
+        return train_buffer, eval_buffer, train_levels, eval_levels, eval_regret
+
+
         
-        return train_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, eval_regret
