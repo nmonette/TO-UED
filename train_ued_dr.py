@@ -7,7 +7,7 @@ import numpy as np
 
 from ued.gd_sampler import GDSampler
 from ued.level_sampler import LevelSampler
-from ued.train import train_agent
+from ued.train_dr import train_agent
 from ued.rnn import eval_agent_nomean as eval_agent, Actor
 from experiments.parse_args import parse_args
 from experiments.logging import init_logger, log_results
@@ -90,8 +90,6 @@ def make_train(args, eval_args):
             
             def identity(rng):
                 rng, _rng = jax.random.split(rng)
-                init_obs, init_state = level_sampler.rollout_manager.batch_reset(_rng, init_train_levels.env_params)
-                hstate = Actor.initialize_carry(init_state.time.shape)
                 return level_buffer, train_levels, init_obs, init_state, hstate
 
             rng, _rng = jax.random.split(rng)

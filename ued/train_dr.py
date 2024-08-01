@@ -22,15 +22,16 @@ def agent_train_step(
     clip_eps: float,
     critic_coeff: float,
     entropy_coeff: float,
-    hstate: jnp.ndarray,
+    hstate: jnp.ndarray
 ):
     def selected_action_probs(all_action_probs, rollout_action):
         all_action_probs += 1e-8
         return jnp.take_along_axis(all_action_probs, rollout_action[..., None], -1).squeeze()
     
     def loss_fn(actor_params):
+        nonlocal hstate
         # --- Forward pass through policy network ---
-        _, all_action_probs, values_pred = jax.vmap(actor_state.apply_fn, in_axes=(None, 0, 0))({"params": actor_params}, (rollout.obs, rollout.done), hstate)
+        hstate, all_action_probs, values_pred = jax.vmap(actor_state.apply_fn, in_axes=(None, 0, 0))({"params": actor_params}, (rollout.obs, rollout.done), hstate)
         entropy = jax.scipy.special.entr(all_action_probs + 1e-8).sum(-1).mean() 
         pi = jax.vmap(selected_action_probs)(all_action_probs, rollout.action)
         lp = jnp.log(pi)
@@ -71,14 +72,14 @@ def agent_train_step(
             "ppo_policy_loss": loss_actor,
             "policy_entropy": entropy
         }
-        return loss, metrics
+        return loss, (metrics, hstate)
     
     # --- Apply Gradients ---
     grad_fn = jax.grad(loss_fn, has_aux=True)
-    actor_grad, metrics = grad_fn(actor_state.params)
+    actor_grad, (metrics, hstate) = grad_fn(actor_state.params)
 
     actor_state = actor_state.apply_gradients(grads=actor_grad)
-    return actor_state, metrics
+    return actor_state, metrics, hstate
 
 
 def train_agent(
@@ -105,7 +106,6 @@ def train_agent(
     )
 
     # --- Compute values, advantages, and targets ---
-    hstate = Actor.initialize_carry(init_state.time.shape)
     value_fn = partial(compute_adv_target, gamma=gamma, gae_lambda=gae_lambda)
     adv, values, target = jax.vmap(value_fn)(values=rollout.value, rollout=rollout) 
     values = values[:,:-1]
@@ -125,11 +125,11 @@ def train_agent(
         rng, actor_state, rollout, values, adv, target, hstate = carry
 
         def minibatch(carry, data):
-            actor_state = carry
-            rollout, values, adv, target, hstate = data
+            actor_state, hstate = carry
+            rollout, values, adv, target = data
 
             # --- Perform one update per minibatch ---
-            actor_state, metrics = agent_train_step_fn(
+            actor_state, metrics, hstate = agent_train_step_fn(
                 actor_state=actor_state, 
                 rollout=rollout, 
                 values=values,
@@ -137,7 +137,7 @@ def train_agent(
                 targets=target,
                 hstate=hstate
             )
-            return actor_state, metrics
+            return (actor_state, hstate), metrics
         
         rng, _rng = jax.random.split(rng)
         perm = jax.random.permutation(_rng, rollout.action.shape[0])
@@ -152,21 +152,20 @@ def train_agent(
             minibatch_fn(values),
             minibatch_fn(adv),
             minibatch_fn(target),
-            jax.tree_util.tree_map(minibatch_fn, hstate)
         )
 
-        actor_state, metrics = jax.lax.scan(
-            minibatch, actor_state, minibatches
+        (actor_state, hstate), metrics = jax.lax.scan(
+            minibatch, (actor_state, hstate), minibatches
         ) 
 
         return (rng, actor_state, rollout, values, adv, target, hstate), metrics
     
     carry_out, metrics = jax.lax.scan(
-        epoch, (rng, actor_state, rollout, values, adv, target, hstate), None, num_epochs
+        epoch, (rng, actor_state, rollout, values, adv, target, end_actor_hstate), None, num_epochs
     )
 
-    actor_state = carry_out[1]
-    return (actor_state, end_actor_hstate, end_obs, end_state), jax.tree_util.tree_map(jnp.mean, metrics)
+    actor_state, hstate = carry_out[1], carry_out[6]
+    return (actor_state, hstate, end_obs, end_state), jax.tree_util.tree_map(jnp.mean, metrics)
 
 
 
