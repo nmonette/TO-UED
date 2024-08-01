@@ -117,7 +117,7 @@ def train_agent(
     values = values[:,:-1]
 
     rollout = rollout.replace(
-        done = jnp.roll(rollout.done, 1, axis=0).at[0].set(False)
+        done = jnp.roll(rollout.done, 1, axis=1).at[:, 0].set(False)
     )
     
     agent_train_step_fn = partial(
