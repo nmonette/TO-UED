@@ -111,7 +111,7 @@ class RolloutWrapper:
                 new_valid_mask,
                 done
             ]
-            transition = Transition(obs, action, reward, next_obs, done, jnp.log(action_probs.squeeze()[action]), value)
+            transition = Transition(obs, action, reward, next_obs, done, jnp.log(action_probs.squeeze()[action] + 1e-8), value)
             if self.return_info:
                 return carry, (transition, info)
             return carry, transition
@@ -134,13 +134,13 @@ class RolloutWrapper:
         )
         if self.return_info:
             rollout, info = rollout
-        end_obs, end_state, hstate, cum_return = carry_out[1], carry_out[2], carry_out[4], carry_out[5]
+        end_obs, end_state, hstate, cum_return, last_done = carry_out[1], carry_out[2], carry_out[4], carry_out[5], carry_out[7]
 
         # --- Add final value onto end of rollouts ---
         reshaped_obs = end_obs.replace(
             image = end_obs.image.reshape(1, *end_obs.image.shape)
         )
-        hstate, _, value = actor_state.apply_fn({"params": actor_state.params}, (reshaped_obs, jnp.full((1,1), False)), hstate)
+        hstate, _, value = actor_state.apply_fn({"params": actor_state.params}, (reshaped_obs, last_done.reshape(1, 1)), hstate)
         rollout = rollout.replace(
             value = jnp.append(rollout.value, value.reshape(1,1), axis=0).squeeze()
         )

@@ -23,7 +23,7 @@ def get_env(env_name: str, env_kwargs: dict):
         env = AutoReplayWrapper(
             MazeSolved(**env_kwargs)
         )
-        # env = AutoResetFiniteWrapper(
+        # env = AutoResetWrapper(
         #     MazeSolved(**env_kwargs), make_level_generator(
         #         env_kwargs["max_height"], env_kwargs["max_width"], 25
         #     )
