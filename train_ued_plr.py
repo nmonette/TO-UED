@@ -194,7 +194,11 @@ def make_train(args, eval_args):
             level_buffer,
             init_train_levels,
             actor_state, 
-            0
+            0.
+        )
+
+        level_buffer = level_buffer.replace(
+            new = level_buffer.new.at[init_train_levels.buffer_id].set(False)
         )
 
         # NOTE: batch_reset has been modified to accept a batch of env_params

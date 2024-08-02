@@ -20,14 +20,14 @@ def get_env(env_name: str, env_kwargs: dict):
     elif env_name in grid.registered_envs:
         env = grid.GridWorld(**env_kwargs)
     elif env_name in maze.registered_envs:
-        env = AutoReplayWrapper(
-            MazeSolved(**env_kwargs)
-        )
-        # env = AutoResetWrapper(
-        #     MazeSolved(**env_kwargs), make_level_generator(
-        #         env_kwargs["max_height"], env_kwargs["max_width"], 25
-        #     )
+        # env = AutoReplayWrapper(
+        #     MazeSolved(**env_kwargs)
         # )
+        env = AutoResetWrapper(
+            MazeSolved(**env_kwargs), make_level_generator(
+                env_kwargs["max_height"], env_kwargs["max_width"], 25
+            )
+        )
     else:
         raise ValueError(
             f"Environment {env_name} not registered in any environment sources."

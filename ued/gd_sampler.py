@@ -1,6 +1,8 @@
 import jax
 import jax.numpy as jnp
 import chex
+import distrax
+
 from ued.level_sampler import LevelBuffer
 
 from .level_sampler import LevelSampler
@@ -37,12 +39,13 @@ class GDSampler(LevelSampler):
         @partial(jax.grad, has_aux=True)
         def sample_action(policy, _rng, bern, buffer):
             unseen_total = buffer.new.sum()
-            policy = jax.lax.select(jnp.logical_and(bern, unseen_total > 0), policy, jnp.where(buffer.new, 1 / unseen_total, 0.))
+            policy = distrax.Categorical(
+                probs=jax.lax.select(jnp.logical_and(bern, unseen_total > 0), policy, jnp.where(buffer.new, 1 / unseen_total, 0.))
+            )
 
-            action = jax.random.choice(_rng, jnp.arange(len(buffer)), p=policy)
-
-            # Returning the gradient (see: REINFORCE)
-            return jnp.log(policy[action] + 1e-6), action
+            action = policy.sample(seed=_rng)
+            log_prob = policy.log_prob(action)
+            return log_prob, action
         
         rng, _rng = jax.random.split(rng)        
         bern = jax.random.bernoulli(_rng, self.p_replay, shape=(batch_size, ))
@@ -125,7 +128,7 @@ class GDSampler(LevelSampler):
         ) 
         eval_buffer = eval_buffer.replace(
             score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),
-            new = train_buffer.new.at[y_level_ids].set(False)
+            new = eval_buffer.new.at[y_level_ids].set(False)
         )
         
         return train_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, eval_regret

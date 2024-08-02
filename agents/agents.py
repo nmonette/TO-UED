@@ -48,8 +48,8 @@ class AgentHyperparams:
         }
         # TODO: Make overrides here if tuning
         return AgentHyperparams(**agent_hypers_dict, critic_dims=args.lpg_target_width).replace(
-            actor_learning_rate=critic_linear_schedule,
-            critic_learning_rate=actor_linear_schedule
+            actor_learning_rate=actor_linear_schedule,
+            critic_learning_rate=critic_linear_schedule
         )
 
 

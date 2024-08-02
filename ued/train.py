@@ -31,10 +31,11 @@ def agent_train_step(
     def loss_fn(actor_params):
         # --- Forward pass through policy network ---
         _, all_action_probs, values_pred = jax.vmap(actor_state.apply_fn, in_axes=(None, 0, 0))({"params": actor_params}, (rollout.obs, rollout.done), hstate)
-        entropy = jax.scipy.special.entr(all_action_probs + 1e-8).sum(-1).mean() 
-        pi = jax.vmap(selected_action_probs)(all_action_probs, rollout.action)
-        lp = jnp.log(pi)
-
+        entropy = all_action_probs.entropy().mean() # jax.scipy.special.entr(all_action_probs + 1e-8).sum(-1).mean() 
+        # pi = jax.vmap(selected_action_probs)(all_action_probs, rollout.action)
+        # lp = jnp.log(pi)
+        lp = all_action_probs.log_prob(rollout.action)
+        
         # --- Calculate value loss ---
         values_pred_clipped = values + (values_pred - values).clip(-clip_eps, clip_eps)
         value_losses = jnp.square(values_pred - targets)
@@ -142,9 +143,10 @@ def train_agent(
         rng, _rng = jax.random.split(rng)
         perm = jax.random.permutation(_rng, rollout.action.shape[0])
 
-        minibatch_fn = lambda x: jnp.take(
-            x.reshape(-1, *x.shape[1:]), perm, axis=0) \
+        minibatch_fn = (lambda x: 
+            jnp.take(x, perm, axis=0)
             .reshape(num_mini_batches, -1, *x.shape[1:])
+        )
         
         # --- Shuffle data and sort into minibatches ---
         minibatches = (
@@ -154,7 +156,6 @@ def train_agent(
             minibatch_fn(target),
             jax.tree_util.tree_map(minibatch_fn, hstate)
         )
-
         actor_state, metrics = jax.lax.scan(
             minibatch, actor_state, minibatches
         ) 

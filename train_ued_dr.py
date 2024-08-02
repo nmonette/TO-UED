@@ -7,7 +7,7 @@ import numpy as np
 
 from ued.gd_sampler import GDSampler
 from ued.level_sampler import LevelSampler
-from ued.train_dr import train_agent
+from ued.train import train_agent
 from ued.rnn import eval_agent_nomean as eval_agent, Actor
 from experiments.parse_args import parse_args
 from experiments.logging import init_logger, log_results
@@ -142,7 +142,7 @@ def make_train(args, eval_args):
             )
 
             metrics["return/holdout_mean"] = agent_return_on_holdout_set.mean()
-            holdout_set_success_rate = jnp.where(agent_return_on_holdout_set > 0, 1, 0)
+            holdout_set_success_rate = jnp.where(agent_return_on_holdout_set > 0, 1., 0.)
             metrics["solve_rate/holdout_mean"] = holdout_set_success_rate.sum() / jnp.size(holdout_set_success_rate)
 
             metrics = {

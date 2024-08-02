@@ -27,14 +27,7 @@ def make_train(args, eval_args):
         dummy_sampler = LevelSampler(args)
         
         level_buffer = dummy_sampler.initialize_buffer(dummy_rng)
-        level_buffer = level_buffer.replace(
-            new=level_buffer.new.at[0].set(True)
-        )
-
         eval_buffer = level_sampler.initialize_buffer(buffer_rng)
-        eval_buffer = eval_buffer.replace(
-            new=eval_buffer.new.at[0].set(True)
-        )
 
         holdout_levels = Level(
             env_params = MazeLevel.load_prefabs([
@@ -196,6 +189,14 @@ def make_train(args, eval_args):
         eval_fn = lambda x: x[eval_idxs]
         init_train_levels = jax.tree_util.tree_map(train_fn, level_buffer.level)
         init_eval_levels = jax.tree_util.tree_map(eval_fn, eval_buffer.level)
+
+        level_buffer = level_buffer.replace(
+            new = level_buffer.new.at[init_train_levels.buffer_id].set(False)
+        )
+
+        eval_buffer = eval_buffer.replace(
+            new = eval_buffer.new.at[init_eval_levels.buffer_id].set(False)
+        )
 
         rng, _rng = jax.random.split(rng)
         zeros = jnp.zeros_like(level_buffer.score)

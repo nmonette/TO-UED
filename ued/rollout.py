@@ -90,11 +90,13 @@ class RolloutWrapper:
             rng, obs, state, actor_state, hstate, cum_reward, valid_mask, last_done = state_input
             rng, _rng = jax.random.split(rng)
             reshaped_obs = obs.replace(
-                image = obs.image.reshape(1, *obs.image.shape)
+                image = obs.image.reshape(1, *obs.image.shape),
+                agent_dir = obs.agent_dir.reshape(1, *obs.agent_dir.shape)
             )
             hstate, action_probs, value = actor_state.apply_fn({"params": actor_state.params}, (reshaped_obs, last_done.reshape(1,1)), hstate)
     
-            action = jax.random.choice(_rng, action_probs.shape[-1], p=action_probs.squeeze())
+            # action = jax.random.choice(_rng, action_probs.shape[-1], p=action_probs.squeeze())
+            action, lp = jax.tree_map(jnp.squeeze, action_probs.sample_and_log_prob(seed=_rng))
             rng, _rng = jax.random.split(rng)
             next_obs, next_state, reward, done, info = self.env.step(
                 _rng, state, action, env_params
@@ -111,7 +113,7 @@ class RolloutWrapper:
                 new_valid_mask,
                 done
             ]
-            transition = Transition(obs, action, reward, next_obs, done, jnp.log(action_probs.squeeze()[action] + 1e-8), value)
+            transition = Transition(obs, action, reward, next_obs, done, lp, value)
             if self.return_info:
                 return carry, (transition, info)
             return carry, transition
@@ -138,7 +140,8 @@ class RolloutWrapper:
 
         # --- Add final value onto end of rollouts ---
         reshaped_obs = end_obs.replace(
-            image = end_obs.image.reshape(1, *end_obs.image.shape)
+            image = end_obs.image.reshape(1, *end_obs.image.shape),
+            agent_dir = end_obs.agent_dir.reshape(1, *end_obs.agent_dir.shape)
         )
         hstate, _, value = actor_state.apply_fn({"params": actor_state.params}, (reshaped_obs, last_done.reshape(1, 1)), hstate)
         rollout = rollout.replace(

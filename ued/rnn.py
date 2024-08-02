@@ -8,6 +8,8 @@ from flax.linen.initializers import constant, orthogonal
 from typing import Any, Optional, Tuple, Sequence
 from functools import partial
 
+import distrax
+
 Carry = Any
 Output = Any
 
@@ -31,13 +33,13 @@ class ResetRNN(nn.Module):
 
         def scan_fn(cell, carry, inputs):
             x, resets = inputs
-            
+
             # --- Reset hidden state if environment is reset ---
             carry = jax.tree_map(
                 lambda a, b: jnp.where(resets.reshape(-1, 1), a, b).squeeze(), reset_carry, carry
             )
             return cell(carry, x)
-
+        
         scan = nn.scan(
             scan_fn,
             variable_broadcast="params",
@@ -70,7 +72,7 @@ class ActorCritic(nn.Module):
         actor_mean = nn.Dense(32, kernel_init=orthogonal(2), bias_init=constant(0.0), name="actor0")(embedding)
         actor_mean = nn.relu(actor_mean)
         actor_mean = nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0), name="actor1")(actor_mean)
-        pi = jax.nn.softmax(actor_mean)
+        pi = distrax.Categorical(logits=actor_mean)
 
         critic = nn.Dense(32, kernel_init=orthogonal(2), bias_init=constant(0.0), name="critic0")(embedding)
         critic = nn.relu(critic)
