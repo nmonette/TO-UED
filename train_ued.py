@@ -72,6 +72,12 @@ def make_train(args, eval_args):
             level_sampler = GDSampler(
                 args, None, level_buffer.score, level_buffer.level.env_params
             )
+
+            # --- Sample new levels ---
+            rng, _rng = jax.random.split(rng)
+            level_buffer, eval_buffer, train_levels, eval_levels, x_lp, y_lp = level_sampler.sample_step(
+                _rng, level_buffer, eval_buffer, x_grad, y_grad
+            )
             
             # --- Train agents on sampled levels ---
             rng, _rng = jax.random.split(rng)
@@ -86,21 +92,10 @@ def make_train(args, eval_args):
                 init_state=init_state, 
             )
             
-            # --- Sample new levels and agents as required ---
-            def sample(rng, level_buffer, eval_buffer, x_grad, y_grad, train_levels, eval_levels, actor_state):
-                rng, sample_rng, reset_rng = jax.random.split(rng, 3)
-                level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, eval_regret = level_sampler.sample(
-                    sample_rng, level_buffer, eval_buffer, x_grad, y_grad, actor_state
-                )
-                init_obs, init_state = level_sampler.rollout_manager.batch_reset(reset_rng, init_train_levels.env_params)
-                hstate = Actor.initialize_carry(init_state.time.shape)
-                return level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, hstate, init_obs, init_state, eval_regret
-
-            def identity(rng, level_buffer, eval_buffer, x_grad, y_grad, train_levels, eval_levels, actor_state):
-                return level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, actor_hstate, init_obs, init_state, eval_regret
-            
-            level_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, actor_hstate, init_obs, init_state, eval_regret = jax.lax.cond(
-                t % args.regret_frequency == 0, sample, identity, rng, level_buffer, eval_buffer, x_grad, y_grad, train_levels, eval_levels, actor_state
+            # --- Update level buffers ---
+            rng, _rng = jax.random.split(rng)
+            level_buffer, eval_buffer, x_grad, y_grad, eval_regret = level_sampler.evaL_step(
+                _rng, actor_state, eval_levels, level_buffer, eval_buffer, x_lp, y_lp
             )
 
             metrics["eval_regret"] = eval_regret
