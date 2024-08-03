@@ -461,7 +461,7 @@ class LevelSampler:
             level=tree_map(reset_fn, level_buffer.level, new_levels),
             score=level_buffer.score.at[reset_ids].set(0.0),
             active=level_buffer.active.at[reset_ids].set(False),
-            new=level_buffer.active.at[reset_ids].set(True),
+            new=level_buffer.new.at[reset_ids].set(True),
         )
 
     def _replay_from_buffer(

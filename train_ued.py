@@ -65,9 +65,8 @@ def make_train(args, eval_args):
         # --- TRAIN LOOP ---
         def _ued_train_loop(carry, t):
             rng, actor_state, level_buffer, eval_buffer, \
-                train_levels, eval_levels, x_grad, y_grad, \
-                    actor_hstate, init_obs, init_state, eval_regret = carry
-                        
+                x_grad, y_grad, eval_regret = carry
+                                                
             # --- Add new level dist to level sampler ---
             level_sampler = GDSampler(
                 args, None, level_buffer.score, level_buffer.level.env_params
@@ -80,10 +79,15 @@ def make_train(args, eval_args):
             )
             
             # --- Train agents on sampled levels ---
+            ## TODO: it will probably perform better if we don't include the reset / hstate reset.
+            rng, _rng = jax.random.split(rng)
+            init_obs, init_state = level_sampler.rollout_manager.batch_reset(_rng, train_levels.env_params)
+            actor_hstate = Actor.initialize_carry(init_state.time.shape)
+
             rng, _rng = jax.random.split(rng)
             (actor_state, actor_hstate, init_obs, init_state), metrics = train_agent_fn(
                 rng=_rng,
-                # NOTE: we should be using dummy_sampler here in order to be compatible with differing train and eval distributions 
+                # NOTE: i think we should be using dummy_sampler here in order to be compatible with differing train and eval distributions 
                 rollout_manager=level_sampler.rollout_manager,
                 actor_state=actor_state,
                 env_params=train_levels.env_params, 
@@ -178,46 +182,18 @@ def make_train(args, eval_args):
             }
             
             carry = (rng, actor_state, level_buffer, eval_buffer, \
-                train_levels, eval_levels, x_grad, y_grad, actor_hstate, init_obs, init_state, eval_regret)
+                x_grad, y_grad, eval_regret)
             
             return carry, metrics
-        
-        # --- Initialize train_levels, eval_levels, hstates ---
-        rng, train_rng, eval_rng = jax.random.split(rng, 3)
-        train_idxs = jax.random.choice(train_rng, len(level_buffer), (args.num_agents, ))
-        eval_idxs = jax.random.choice(eval_rng, len(eval_buffer), (args.num_agents, ))
-        train_fn = lambda x: x[train_idxs]
-        eval_fn = lambda x: x[eval_idxs]
-        init_train_levels = jax.tree_util.tree_map(train_fn, level_buffer.level)
-        init_eval_levels = jax.tree_util.tree_map(eval_fn, eval_buffer.level)
-
-        level_buffer = level_buffer.replace(
-            new = level_buffer.new.at[init_train_levels.buffer_id].set(False)
-        )
-
-        eval_buffer = eval_buffer.replace(
-            new = eval_buffer.new.at[init_eval_levels.buffer_id].set(False)
-        )
-
-        rng, _rng = jax.random.split(rng)
-        zeros = jnp.zeros_like(level_buffer.score)
-        level_buffer, eval_buffer, init_train_levels, init_eval_levels, x_grad, y_grad, eval_regret = level_sampler.sample(
-            _rng, level_buffer, eval_buffer, zeros, zeros, actor_state
-        )
 
         level_sampler = GDSampler(
             args, None, level_buffer.score, level_buffer.level.env_params
         )
 
-        # NOTE: batch_reset has been modified to accept a batch of env_params
-        rng, _rng = jax.random.split(rng)
-        init_obs, init_state = level_sampler.rollout_manager.batch_reset(_rng, init_train_levels.env_params)
-        hstate = Actor.initialize_carry(init_state.time.shape)
-
         # --- Stack and return metrics ---
+        zeros = jnp.zeros_like(level_buffer.score)
         carry = (rng, actor_state, level_buffer, eval_buffer, \
-                init_train_levels, init_eval_levels, x_grad, y_grad, \
-                hstate, init_obs, init_state, eval_regret)
+                zeros, zeros, 0.)
         carry, metrics = jax.lax.scan(
             _ued_train_loop, carry, jnp.arange(args.train_steps), args.train_steps
         )
