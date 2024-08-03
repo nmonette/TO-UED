@@ -52,7 +52,6 @@ def make_train(args, eval_args):
 
         train_agent_fn = partial(
             train_agent, 
-            rollout_manager=dummy_sampler.rollout_manager,
             num_epochs=args.num_epochs,
             num_mini_batches=args.num_mini_batches,
             num_workers=args.env_workers,
@@ -68,11 +67,18 @@ def make_train(args, eval_args):
             rng, actor_state, level_buffer, eval_buffer, \
                 train_levels, eval_levels, x_grad, y_grad, \
                     actor_hstate, init_obs, init_state, eval_regret = carry
+                        
+            # --- Add new level dist to level sampler ---
+            level_sampler = GDSampler(
+                args, None, level_buffer.score, level_buffer.level.env_params
+            )
             
             # --- Train agents on sampled levels ---
             rng, _rng = jax.random.split(rng)
             (actor_state, actor_hstate, init_obs, init_state), metrics = train_agent_fn(
                 rng=_rng,
+                # NOTE: we should be using dummy_sampler here in order to be compatible with differing train and eval distributions 
+                rollout_manager=level_sampler.rollout_manager,
                 actor_state=actor_state,
                 env_params=train_levels.env_params, 
                 actor_hstate=actor_hstate,
@@ -202,6 +208,10 @@ def make_train(args, eval_args):
         zeros = jnp.zeros_like(level_buffer.score)
         level_buffer, eval_buffer, init_train_levels, init_eval_levels, x_grad, y_grad, eval_regret = level_sampler.sample(
             _rng, level_buffer, eval_buffer, zeros, zeros, actor_state
+        )
+
+        level_sampler = GDSampler(
+            args, None, level_buffer.score, level_buffer.level.env_params
         )
 
         # NOTE: batch_reset has been modified to accept a batch of env_params

@@ -34,6 +34,13 @@ def parse_args(cmd_args=sys.argv[1:]):
         type=int,
         default=64,
     )
+    parser.add_argument(
+        "--env_reset_method",
+        help="Method of resetting environment after a level finishes",
+        type=str,
+        default="reset",
+        choices=["reset", "replay", "finite"]
+    )
     # --- EXPERIMENT ---
     # Settings
     parser.add_argument("--seed", type=int, default=0, help="Random seed")

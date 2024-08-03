@@ -6,16 +6,28 @@ import distrax
 from ued.level_sampler import LevelBuffer
 
 from .level_sampler import LevelSampler
+from environments.environments import get_env
 from .rnn import eval_agent
+from .rollout import RolloutWrapper
 from util import *
 from util.jax import pmap
 
 class GDSampler(LevelSampler):
-    def __init__(self, args, fixed_eval = None):
+    def __init__(self, args, fixed_eval = None, train_dist = None, levels = None):
         super().__init__(args)
         self.args = args
         self.lpg_hypers = LpgHyperparams.from_run_args(args)
         self.fixed_eval = fixed_eval
+
+        if train_dist is not None and args.env_reset_method != "reset":
+            self.env = get_env(self.env_name, self.env_kwargs, train_dist, levels, replay = (args.env_reset_method == "replay") )
+            self.rollout_manager = RolloutWrapper(
+                self.env_name, 
+                self.args.train_rollout_len, 
+                self.max_rollout_len, 
+                env_kwargs=self.env_kwargs, 
+                env=self.env
+            )
 
     def _create_eval_agent(self, rng, level, actor_state, critic_state=None):
         """Initialise an agent on the given level."""
@@ -132,3 +144,4 @@ class GDSampler(LevelSampler):
         )
         
         return train_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, eval_regret
+

@@ -14,15 +14,19 @@ from .jaxued.autoreplay import AutoReplayWrapper
 from .jaxued.autoreset import AutoResetWrapper, AutoResetFiniteWrapper
 
 
-def get_env(env_name: str, env_kwargs: dict):
+def get_env(env_name: str, env_kwargs: dict, sample_dist: jax.numpy.ndarray = None, levels = None, replay=False):
+    ## TODO: make sure only PLRBuffer is replay wrapped
     if env_name in gymnax.registered_envs:
         env, _ = gymnax.make(env_name, **env_kwargs)
     elif env_name in grid.registered_envs:
         env = grid.GridWorld(**env_kwargs)
+    elif env_name in maze.registered_envs and replay:
+        env = AutoReplayWrapper(MazeSolved(**env_kwargs))
+    elif env_name in maze.registered_envs and sample_dist is not None:
+        env = AutoResetFiniteWrapper(
+            MazeSolved(**env_kwargs), levels, sample_dist
+        )
     elif env_name in maze.registered_envs:
-        # env = AutoReplayWrapper(
-        #     MazeSolved(**env_kwargs)
-        # )
         env = AutoResetWrapper(
             MazeSolved(**env_kwargs), make_level_generator(
                 env_kwargs["max_height"], env_kwargs["max_width"], 25

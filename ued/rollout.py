@@ -19,6 +19,7 @@ class RolloutWrapper:
         eval_rollout_len: Optional[int] = None,
         env_kwargs: dict = {},
         return_info: bool = False,
+        env = None
     ):
         """
         env_name (str): Name of environment to use.
@@ -30,7 +31,10 @@ class RolloutWrapper:
         self.env_name = env_name
         self.env_kwargs = env_kwargs
         # Define the RL environment & network forward function
-        self.env = get_env(env_name, env_kwargs)
+        if env is None:
+            self.env = get_env(env_name, env_kwargs)
+        else:
+            self.env = env
 
         self.train_rollout_len = train_rollout_len
         self.eval_rollout_len = eval_rollout_len
