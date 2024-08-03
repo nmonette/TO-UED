@@ -6,12 +6,12 @@ command:
   - "--true_regret"
   - ${args_no_boolean_flags}
 entity: flair
-project: to-ued-seed-sweep
+project: new-to-ued-seed-sweep
 method: grid
-name: plr-seed-sweep
+name: dr-seed-sweep
 metric:
   goal: maximize
-  name: agent_return_on_holdout_set
+  name: solve_rate/mean
 parameters:
   wandb_project:
     value: "to-ued-seed-sweep"
@@ -20,27 +20,24 @@ parameters:
   method:
     value: "PLR"
   actor_lr:
-    value: 0.00002
-  critic_lr:
-    value: 0.00004
-  num_agents:
-    value: 32
-  num_mini_batches:
-    value: 1
-  ppo_entropy_coeff:
-    value: 0.01
-  regret_frequency: 
-    value: 1
-  regret_method:
-    value: "mini_batch_vmap"
-  score_function:
-    value: "alg_regret"
-  seed:
-    values: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+    value: 0.0001
+  critic_lr: 
+    value: 0.0001
+  seed: 
+    values: [0, 10, 50, 100, 200]
   train_rollout_len:
-    value: 250
+    value: 251
+  gamma:
+    value: 0.995
+  gae_lambda:
+    value: 0.98
+  wandb_project:
+    value: "bug-ablation-dr" 
+  wandb_entity:
+    value: "nathanmonette1"
   train_steps:
-    value: 150000
-  ogd_learning_rate: 
-    value: 0.01
-  
+    value: 15000
+  ogd_learning_rate:
+    value: 0.001 
+  p_replay:
+    value: 0.5
