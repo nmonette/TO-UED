@@ -6,13 +6,15 @@ command:
   - "--true_regret"
   - ${args_no_boolean_flags}
 entity: flair
-project: new-to-ued-seed-sweep
+project: to-ued-seed-sweep2
 method: grid
 name: dr-seed-sweep
 metric:
   goal: maximize
   name: solve_rate/mean
 parameters:
+  env_reset_method:
+    value: "replay"
   wandb_project:
     value: "to-ued-seed-sweep"
   wandb_entity:

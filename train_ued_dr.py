@@ -77,25 +77,6 @@ def make_train(args, eval_args):
                 init_obs=init_obs, 
                 init_state=init_state, 
             )
-            
-            # --- Sample new levels as required ---
-            def sample(rng):
-                level_buffer = level_sampler.initialize_buffer(rng)
-                train_levels = jax.tree_util.tree_map(lambda x: x[:args.num_agents], level_buffer.level)
-
-                rng, _rng = jax.random.split(rng)
-                init_obs, init_state = level_sampler.rollout_manager.batch_reset(_rng, init_train_levels.env_params)
-                hstate = Actor.initialize_carry(init_state.time.shape)
-                return level_buffer, train_levels, init_obs, init_state, hstate
-            
-            def identity(rng):
-                rng, _rng = jax.random.split(rng)
-                return level_buffer, train_levels, init_obs, init_state, hstate
-
-            rng, _rng = jax.random.split(rng)
-            level_buffer, train_levels, init_obs, init_state, actor_hstate = jax.lax.cond(
-                t % args.regret_frequency == 0, sample, identity, _rng
-            )
 
             # --- Collecting return on sampled train set levels ---
             rng, _rng = jax.random.split(rng)
