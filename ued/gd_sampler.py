@@ -156,6 +156,9 @@ class GDSampler(LevelSampler):
     ):
         """
         Line 1, then replenish buffers, and then line 2
+
+        NOTE: a lot of the operations for x/the train buffer here are not actually used, this is just an artifact of the past.
+        TODO: make x and y the sample dist instead of xhat and yhat
         """
         batch_size = self.args.num_agents
         # --- Calculate train and eval distributions ---
@@ -197,7 +200,7 @@ class GDSampler(LevelSampler):
             score = projection_simplex_truncated(
                 jnp.where(new_train.new, 0., train_buffer.score), self.args.ogd_trunc_size
             ),
-            new = new_train.new.at[train_levels.buffer_id].set(False)
+            # new = new_train.new.at[train_levels.buffer_id].set(False)
         )
 
         eval_buffer = new_eval.replace(
@@ -237,12 +240,13 @@ class GDSampler(LevelSampler):
             self._compute_algorithmic_regret, self.num_mini_batches
         )(score_rng, eval_agents).sum()
 
-        x_grad = -(x_lp * eval_regret).mean(axis=0)
-        y_grad = (y_lp * eval_regret).mean(axis=0)\
+        x_grad = -(x_lp * eval_regret).sum(axis=0) / jnp.count_nonzero(x_lp)
+        y_grad = (y_lp * eval_regret).mean(axis=0)
         
          # --- Update buffers for next round of sampling ---
         train_buffer = train_buffer.replace(
             score = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * x_grad, self.args.ogd_trunc_size),
+            new = jnp.where(x_grad != 0, False, train_buffer.new)
         ) 
         eval_buffer = eval_buffer.replace(
             score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),

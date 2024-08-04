@@ -162,6 +162,7 @@ def train_agent(
 
         return (rng, actor_state, rollout, values, adv, target, hstate), metrics
     
+    # TODO: test actor_hstate here instead of hstate
     carry_out, metrics = jax.lax.scan(
         epoch, (rng, actor_state, rollout, values, adv, target, hstate), None, num_epochs
     )

@@ -64,18 +64,18 @@ def make_train(args, eval_args):
         
         # --- TRAIN LOOP ---
         def _ued_train_loop(carry, t):
-            rng, actor_state, level_buffer, eval_buffer, \
-                train_levels, eval_levels, x_grad, y_grad, \
-                    actor_hstate, init_obs, init_state, eval_regret = carry
+            rng, actor_state, level_buffer, eval_buffer, x_grad, y_grad, \
+                    actor_hstate, init_obs, init_state = carry
                         
             # --- Add new level dist to level sampler ---
+            reset_dist = args.p_replay * level_buffer.score + (1 - args.p_replay) * jnp.where(level_buffer.new, 1 / level_buffer.new.sum(), 0.)
             level_sampler = GDSampler(
-                args, None, level_buffer.score, level_buffer.level.env_params
+                args, None, reset_dist, level_buffer.level.env_params
             )
 
             # --- Sample new levels ---
             rng, _rng = jax.random.split(rng)
-            level_buffer, eval_buffer, train_levels, eval_levels, x_lp, y_lp = level_sampler.sample_step(
+            level_buffer, eval_buffer, train_levels, eval_levels, _, y_lp = level_sampler.sample_step(
                 _rng, level_buffer, eval_buffer, x_grad, y_grad
             )
             
@@ -91,6 +91,13 @@ def make_train(args, eval_args):
                 init_obs=init_obs, 
                 init_state=init_state, 
             )
+
+            # --- Calculate resulting train distribution ---
+            count_fn = lambda idx: jnp.zeros(args.buffer_size).at[init_state.prev_idx[idx]].set(jax.lax.select(init_state.newly_done[idx], 1., 0.))
+            done_counts = jax.vmap(count_fn)(jnp.arange(len(init_state.newly_done))).sum(axis=0)
+
+            grad_fn = jax.grad(lambda x, idx: jnp.log(x[idx]) * done_counts[idx])
+            x_lp = jax.vmap(grad_fn, in_axes=(None, 0))(reset_dist, jnp.arange(len(level_buffer)))
             
             # --- Update level buffers ---
             rng, _rng = jax.random.split(rng)
@@ -178,7 +185,7 @@ def make_train(args, eval_args):
             }
             
             carry = (rng, actor_state, level_buffer, eval_buffer, \
-                train_levels, eval_levels, x_grad, y_grad, actor_hstate, init_obs, init_state, eval_regret)
+                x_grad, y_grad, actor_hstate, init_obs, init_state)
             
             return carry, metrics
         
@@ -215,9 +222,8 @@ def make_train(args, eval_args):
         hstate = Actor.initialize_carry(init_state.time.shape)
 
         # --- Stack and return metrics ---
-        carry = (rng, actor_state, level_buffer, eval_buffer, \
-                init_train_levels, init_eval_levels, x_grad, y_grad, \
-                hstate, init_obs, init_state, eval_regret)
+        carry = (rng, actor_state, level_buffer, eval_buffer, x_grad, y_grad, \
+                hstate, init_obs, init_state)
         carry, metrics = jax.lax.scan(
             _ued_train_loop, carry, jnp.arange(args.train_steps), args.train_steps
         )

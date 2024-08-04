@@ -51,7 +51,7 @@ class AutoResetWrapper(UnderspecifiedEnv):
         
         obs_re, env_state_re = self._env.reset_to_level(rng_reset, new_level, params)
         obs_st, env_state_st, reward, done, info = self._env.step(
-            rng, state.env_state, action, params
+            rng_step, state.env_state, action, params
         )
         
         env_state = jax.tree_map(lambda x, y: jax.lax.select(done, x, y), env_state_re, env_state_st)
@@ -83,6 +83,8 @@ class AutoResetWrapper(UnderspecifiedEnv):
 class AutoResetFiniteState:
     env_state: EnvState
     level_idx: int
+    prev_idx: int = -1
+    newly_done: bool = False
 
     @property
     def time(self):
@@ -132,16 +134,24 @@ class AutoResetFiniteWrapper(UnderspecifiedEnv):
         
         obs_re, env_state_re = self._env.reset_to_level(rng_reset, new_level, params)
         obs_st, env_state_st, reward, done, info = self._env.step(
-            rng, state.env_state, action, params
+            rng_step, state.env_state, action, params
         )
         
         env_state = jax.tree_map(lambda x, y: jax.lax.select(done, x, y), env_state_re, env_state_st)
         obs = jax.tree_map(lambda x, y: jax.lax.select(done, x, y), obs_re, obs_st)
+        prev_idx = jax.lax.select(done, state.level_idx, state.prev_idx)
         level_idx = jax.lax.select(done, new_level_idx, state.level_idx)
+
+        state = AutoResetFiniteState(
+            env_state=env_state, 
+            level_idx=level_idx,
+            prev_idx=prev_idx,
+            newly_done = jnp.logical_or(done, state.newly_done)
+        )
         
         info["level_idx"] = level_idx
         
-        return obs, AutoResetFiniteState(env_state=env_state, level_idx=level_idx), reward, done, info
+        return obs, state, reward, done, info
 
     def reset_env_to_level(
         self,
