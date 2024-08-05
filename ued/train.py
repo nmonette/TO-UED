@@ -163,6 +163,7 @@ def train_agent(
         return (rng, actor_state, rollout, values, adv, target, hstate), metrics
     
     # TODO: test actor_hstate here instead of hstate
+    # NOTE: ^ doesn't work for GD. Can see about PLR and DR later. 
     carry_out, metrics = jax.lax.scan(
         epoch, (rng, actor_state, rollout, values, adv, target, hstate), None, num_epochs
     )

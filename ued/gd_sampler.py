@@ -151,8 +151,8 @@ class GDSampler(LevelSampler):
         rng, 
         train_buffer, 
         eval_buffer, 
-        prev_x_grad, 
-        prev_y_grad
+        x_grad, 
+        y_grad
     ):
         """
         Line 1, then replenish buffers, and then line 2
@@ -162,8 +162,8 @@ class GDSampler(LevelSampler):
         """
         batch_size = self.args.num_agents
         # --- Calculate train and eval distributions ---
-        x = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * prev_x_grad, self.args.ogd_trunc_size)
-        y = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * prev_y_grad, self.args.ogd_trunc_size)
+        x = projection_simplex_truncated(train_buffer.score + 2 * self.args.ogd_learning_rate * x_grad, self.args.ogd_trunc_size)
+        y = projection_simplex_truncated(eval_buffer.score + 2 * self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size)
         
         # --- Sample new levels ---
         new_train = train_buffer.replace(score=x)
@@ -188,11 +188,9 @@ class GDSampler(LevelSampler):
             score = projection_simplex_truncated(eval_buffer.score, self.args.ogd_trunc_size)
         )
 
-        rng, x_rng, y_rng = jax.random.split(rng, 3)
-        x_lp, x_level_ids = self._sample_actions(x_rng, new_train, batch_size)
+        rng, y_rng = jax.random.split(rng)
         y_lp, y_level_ids = self._sample_actions(y_rng, new_eval, batch_size)
 
-        train_levels = jax.tree_util.tree_map(lambda x: x[x_level_ids], train_buffer.level)
         eval_levels = jax.tree_util.tree_map(lambda x: x[y_level_ids], eval_buffer.level)
 
         # --- Update buffers back to xhat, yhat, but with the new levels ---
@@ -210,10 +208,10 @@ class GDSampler(LevelSampler):
             new = new_eval.new.at[eval_levels.buffer_id].set(False)
         )
 
-        return train_buffer, eval_buffer, train_levels, eval_levels, x_lp, y_lp
+        return train_buffer, eval_buffer, eval_levels, x, y_lp
         
 
-    def evaL_step(
+    def eval_step(
         self, 
         rng, 
         actor_state, 
@@ -222,6 +220,8 @@ class GDSampler(LevelSampler):
         eval_buffer,
         x_lp, 
         y_lp, 
+        prev_x_grad,
+        prev_y_grad
     ):
         """
         Lines 4-6
@@ -243,13 +243,14 @@ class GDSampler(LevelSampler):
         x_grad = -(x_lp * eval_regret).sum(axis=0) / jnp.count_nonzero(x_lp)
         y_grad = (y_lp * eval_regret).mean(axis=0)
         
-         # --- Update buffers for next round of sampling ---
+        # --- Update buffers for next round of sampling ---
+        # NOTE: this is \hat{x} and \hat{y}
         train_buffer = train_buffer.replace(
-            score = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * x_grad, self.args.ogd_trunc_size),
+            score = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * prev_x_grad, self.args.ogd_trunc_size),
             new = jnp.where(x_grad != 0, False, train_buffer.new)
         ) 
         eval_buffer = eval_buffer.replace(
-            score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),
+            score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * prev_y_grad, self.args.ogd_trunc_size),
         )
 
         return train_buffer, eval_buffer, x_grad, y_grad, eval_regret

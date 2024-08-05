@@ -20,7 +20,7 @@ parameters:
   wandb_entity:
     value: flair
   method:
-    value: "GD"
+    value: "GD2"
   actor_lr:
     value: 0.0001
   critic_lr: 

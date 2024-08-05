@@ -65,18 +65,19 @@ def make_train(args, eval_args):
         # --- TRAIN LOOP ---
         def _ued_train_loop(carry, t):
             rng, actor_state, level_buffer, eval_buffer, x_grad, y_grad, \
-                    actor_hstate, init_obs, init_state = carry
-                        
-            # --- Add new level dist to level sampler ---
-            reset_dist = args.p_replay * level_buffer.score + (1 - args.p_replay) * jnp.where(level_buffer.new, 1 / level_buffer.new.sum(), 0.)
-            level_sampler = GDSampler(
-                args, None, reset_dist, level_buffer.level.env_params
-            )
+                actor_hstate, init_obs, init_state = carry
 
             # --- Sample new levels ---
             rng, _rng = jax.random.split(rng)
-            level_buffer, eval_buffer, train_levels, eval_levels, _, y_lp = level_sampler.sample_step(
-                _rng, level_buffer, eval_buffer, x_grad, y_grad
+            level_buffer, eval_buffer, eval_levels, x, y_lp = GDSampler.sample_step(
+                GDSampler(args), _rng, level_buffer, eval_buffer, x_grad, y_grad
+            )
+
+            # --- Add new level dist to level sampler ---
+            # next line: replace `x` with `level_buffer.score` and it might do better
+            reset_dist = args.p_replay * x + (1 - args.p_replay) * jnp.where(level_buffer.new, 1 / level_buffer.new.sum(), 0.)
+            level_sampler = GDSampler(
+                args, None, reset_dist, level_buffer.level.env_params
             )
             
             # --- Train agents on sampled levels ---
@@ -86,7 +87,9 @@ def make_train(args, eval_args):
                 # NOTE: we should be using dummy_sampler here in order to be compatible with differing train and eval distributions 
                 rollout_manager=level_sampler.rollout_manager,
                 actor_state=actor_state,
-                env_params=train_levels.env_params, 
+                # TODO: figure out if this needs to be a reprsentative set or not,
+                #       or if this is only taking the stationary EnvParams
+                env_params=init_train_levels.env_params, 
                 actor_hstate=actor_hstate,
                 init_obs=init_obs, 
                 init_state=init_state, 
@@ -101,16 +104,16 @@ def make_train(args, eval_args):
             
             # --- Update level buffers ---
             rng, _rng = jax.random.split(rng)
-            level_buffer, eval_buffer, x_grad, y_grad, eval_regret = level_sampler.evaL_step(
-                _rng, actor_state, eval_levels, level_buffer, eval_buffer, x_lp, y_lp
+            level_buffer, eval_buffer, x_grad, y_grad, eval_regret = level_sampler.eval_step(
+                _rng, actor_state, eval_levels, level_buffer, eval_buffer, x_lp, y_lp, x_grad, y_grad
             )
 
             metrics["eval_regret"] = eval_regret
 
             # --- Collecting return on sampled train set levels ---
             rng, _rng = jax.random.split(rng)
-            train_metric_level_idxs = jax.random.choice(rng, args.num_agents, (16, ))
-            train_metric_levels = jax.tree_util.tree_map(lambda x: x[train_metric_level_idxs], train_levels)
+            train_metric_level_idxs = jax.random.choice(rng, args.buffer_size, (16, ), p=x)
+            train_metric_levels = jax.tree_util.tree_map(lambda x: x[train_metric_level_idxs], level_buffer.level)
 
             train_metric_hstate = Actor.initialize_carry((16, args.env_workers, ))
             rng, _rng = jax.random.split(rng)
