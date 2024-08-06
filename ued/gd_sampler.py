@@ -145,6 +145,30 @@ class GDSampler(LevelSampler):
         
         return train_buffer, eval_buffer, train_levels, eval_levels, x_grad, y_grad, eval_regret
     
+    def _reset_lowest_scoring(
+        self, rng: chex.PRNGKey, level_buffer: LevelBuffer, minimum_new: int
+    ):
+        """
+        Reset the lowest scoring levels in the buffer.
+        Ensures there are at least minimum_new new, inactive levels.
+        """
+        # --- Identify lowest scoring levels ---
+        level_scores = jnp.where(level_buffer.new, -jnp.inf, level_buffer.score)
+        level_scores = jnp.where(level_buffer.active, jnp.inf, level_scores)
+        reset_ids = jnp.argsort(level_scores)[:minimum_new]
+        rng = jax.random.split(rng, minimum_new)
+        new_params, new_lifetimes = self._sample_env_params(rng)
+        new_levels = Level(new_params, new_lifetimes, reset_ids)
+
+        # --- Reset lowest scoring levels ---
+        reset_fn = lambda x, y: x.at[reset_ids].set(y)
+        return level_buffer.replace(
+            level=jax.tree_util.tree_map(reset_fn, level_buffer.level, new_levels),
+            score=projection_simplex_truncated(level_buffer.score.at[reset_ids].set(0.0), self.args.ogd_trunc_size),
+            active=level_buffer.active.at[reset_ids].set(False),
+            new=level_buffer.new.at[reset_ids].set(True),
+        )
+    
 
     def sample_step(
         self, 
@@ -162,31 +186,23 @@ class GDSampler(LevelSampler):
         """
         batch_size = self.args.num_agents
         # --- Calculate train and eval distributions ---
-        x = projection_simplex_truncated(train_buffer.score + 2 * self.args.ogd_learning_rate * x_grad, self.args.ogd_trunc_size)
-        y = projection_simplex_truncated(eval_buffer.score + 2 * self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size)
+        x = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * x_grad, self.args.ogd_trunc_size)
+        y = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size)
         
         # --- Sample new levels ---
         new_train = train_buffer.replace(score=x)
         if self.fixed_eval is None:
             new_eval = eval_buffer.replace(
-            score=y
-        ) 
+                score=y
+            ) 
         else:
             new_eval = eval_buffer.replace(
                 score=self.fixed_eval
             ) 
 
         rng, train_rng, eval_rng = jax.random.split(rng, 3)
-        new_train = self._reset_lowest_scoring(train_rng, train_buffer, batch_size)
-        new_eval = self._reset_lowest_scoring(eval_rng, eval_buffer, batch_size)
-
-        new_train = train_buffer.replace(
-            score = projection_simplex_truncated(train_buffer.score, self.args.ogd_trunc_size)
-        )
-
-        new_eval = eval_buffer.replace(
-            score = projection_simplex_truncated(eval_buffer.score, self.args.ogd_trunc_size)
-        )
+        new_train = self._reset_lowest_scoring(train_rng, new_train, batch_size)
+        new_eval = self._reset_lowest_scoring(eval_rng, new_eval, batch_size)
 
         rng, y_rng = jax.random.split(rng)
         y_lp, y_level_ids = self._sample_actions(y_rng, new_eval, batch_size)
@@ -208,7 +224,7 @@ class GDSampler(LevelSampler):
             new = new_eval.new.at[eval_levels.buffer_id].set(False)
         )
 
-        return train_buffer, eval_buffer, eval_levels, x, y_lp
+        return train_buffer, eval_buffer, eval_levels, new_train.score, y_lp
         
 
     def eval_step(
@@ -220,8 +236,6 @@ class GDSampler(LevelSampler):
         eval_buffer,
         x_lp, 
         y_lp, 
-        prev_x_grad,
-        prev_y_grad
     ):
         """
         Lines 4-6
@@ -246,11 +260,11 @@ class GDSampler(LevelSampler):
         # --- Update buffers for next round of sampling ---
         # NOTE: this is \hat{x} and \hat{y}
         train_buffer = train_buffer.replace(
-            score = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * prev_x_grad, self.args.ogd_trunc_size),
+            score = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * x_grad, self.args.ogd_trunc_size),
             new = jnp.where(x_grad != 0, False, train_buffer.new)
         ) 
         eval_buffer = eval_buffer.replace(
-            score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * prev_y_grad, self.args.ogd_trunc_size),
+            score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),
         )
 
         return train_buffer, eval_buffer, x_grad, y_grad, eval_regret

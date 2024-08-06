@@ -13,6 +13,8 @@ metric:
   goal: maximize
   name: solve_rate/mean
 parameters:
+  num_agents:
+    value: 128
   env_reset_method:
     value: "reset"
   wandb_project:
@@ -20,7 +22,7 @@ parameters:
   wandb_entity:
     value: flair
   method:
-    value: "DR"
+    value: "DR-big-batch"
   actor_lr:
     value: 0.0001
   critic_lr: 
