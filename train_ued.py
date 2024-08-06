@@ -111,7 +111,7 @@ def make_train(args, eval_args):
             # --- Update level buffers ---
             rng, _rng = jax.random.split(rng)
             level_buffer, eval_buffer, x_grad, y_grad, eval_regret = level_sampler.eval_step(
-                _rng, actor_state, eval_levels, level_buffer, eval_buffer, x_lp, y_lp
+                _rng, actor_state, eval_levels, level_buffer, eval_buffer, x_lp, y_lp, x_grad, y_grad
             )
 
             metrics["eval_regret"] = eval_regret

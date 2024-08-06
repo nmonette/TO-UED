@@ -236,6 +236,8 @@ class GDSampler(LevelSampler):
         eval_buffer,
         x_lp, 
         y_lp, 
+        prev_x_grad, 
+        prev_y_grad
     ):
         """
         Lines 4-6
@@ -260,11 +262,11 @@ class GDSampler(LevelSampler):
         # --- Update buffers for next round of sampling ---
         # NOTE: this is \hat{x} and \hat{y}
         train_buffer = train_buffer.replace(
-            score = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * x_grad, self.args.ogd_trunc_size),
+            score = projection_simplex_truncated(train_buffer.score + self.args.ogd_learning_rate * prev_x_grad, self.args.ogd_trunc_size),
             new = jnp.where(x_grad != 0, False, train_buffer.new)
         ) 
         eval_buffer = eval_buffer.replace(
-            score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * y_grad, self.args.ogd_trunc_size),
+            score = projection_simplex_truncated(eval_buffer.score + self.args.ogd_learning_rate * prev_y_grad, self.args.ogd_trunc_size),
         )
 
         return train_buffer, eval_buffer, x_grad, y_grad, eval_regret
