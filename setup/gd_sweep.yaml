@@ -14,7 +14,7 @@ metric:
   name: solve_rate/mean
 parameters:
   num_agents:
-    value: 128
+    value: 32
   env_reset_method:
     value: "finite"
   wandb_project:
@@ -22,7 +22,7 @@ parameters:
   wandb_entity:
     value: flair
   method:
-    value: "GD-big-batch"
+    value: "GD-TD"
   actor_lr:
     value: 0.0001
   critic_lr: 

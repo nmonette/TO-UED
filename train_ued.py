@@ -9,6 +9,7 @@ from ued.gd_sampler import GDSampler
 from ued.level_sampler import LevelSampler
 from ued.train import train_agent
 from ued.rnn import eval_agent_nomean as eval_agent, Actor
+from ued.meta_train import make_meta_step, MetaTrainState
 from experiments.parse_args import parse_args
 from experiments.logging import init_logger, log_results
 from util.jax import jax_debug_wrapper
@@ -21,7 +22,7 @@ import sys
 def make_train(args, eval_args):
     def _train_fn(rng):
         # --- Initialize policy and level buffers and samplers ---
-        rng, agent_rng, dummy_rng, buffer_rng, holdout_rng = jax.random.split(rng, 5)
+        rng, agent_rng, dummy_rng, buffer_rng = jax.random.split(rng, 4)
 
         level_sampler = GDSampler(eval_args)
         dummy_sampler = LevelSampler(args)
@@ -61,10 +62,12 @@ def make_train(args, eval_args):
             critic_coeff=args.critic_coeff,
             entropy_coeff=args.ppo_entropy_coeff
         )
+
+        meta_step_fn = make_meta_step(args)
         
         # --- TRAIN LOOP ---
         def _ued_train_loop(carry, t):
-            rng, actor_state, level_buffer, eval_buffer, x_grad, y_grad, \
+            rng, meta_state, actor_state, level_buffer, eval_buffer, x_grad, y_grad, \
                 actor_hstate, init_obs, init_state = carry
             
             # --- Mark level finish flag ---
@@ -107,11 +110,34 @@ def make_train(args, eval_args):
 
             grad_fn = jax.grad(lambda x, idx: jnp.log(x[idx] + 1e-6) * done_counts[idx])
             x_lp = jax.vmap(grad_fn, in_axes=(None, 0))(reset_dist, jnp.arange(len(level_buffer)))
+            x_lp = x_lp.sum(axis=0) / jnp.count_nonzero(x_lp)
             
+            # --- Update meta-state ---
+            meta_state = meta_state.replace(
+                prev_x_grad = x_grad,
+                prev_y_grad = y_grad,
+                x = x,
+                y = y,
+                x_lp = meta_state.x_lp.at[t % args.regret_frequency].set(x_lp),
+                y_lp = meta_state.y_lp.at[t % args.regret_frequency].set(y_lp),
+            )
+
             # --- Update level buffers ---
             rng, _rng = jax.random.split(rng)
-            level_buffer, eval_buffer, x_grad, y_grad, eval_regret = level_sampler.eval_step(
-                _rng, actor_state, eval_levels, level_buffer, eval_buffer, x_lp, y_lp
+            level_buffer, eval_buffer, eval_regret = level_sampler.eval_step(
+                _rng, actor_state, eval_levels, level_buffer, eval_buffer
+            )
+
+            # --- Perform meta-updates if necessary ---
+            identity_fn = lambda r, m, t, e: (meta_state, level_buffer, eval_buffer)
+            rng, _rng = jax.random.split(rng)
+            meta_state, level_buffer, eval_buffer = jax.lax.cond(
+                t % args.regret_frequency == 0,
+                meta_step_fn, identity_fn, 
+                _rng, 
+                meta_state.replace(regrets = meta_state.regrets.at[t % args.regret_frequency].set(eval_regret)), 
+                level_buffer, 
+                eval_buffer
             )
 
             metrics["eval_regret"] = eval_regret
@@ -193,7 +219,7 @@ def make_train(args, eval_args):
                 "solve_rate/StandardMaze3":holdout_set_success_rate[7].sum() / len(holdout_set_success_rate[0]),
             }
             
-            carry = (rng, actor_state, level_buffer, eval_buffer, \
+            carry = (rng, meta_state,  actor_state, level_buffer, eval_buffer, \
                 x_grad, y_grad, actor_hstate, init_obs, init_state)
             
             return carry, metrics
@@ -207,11 +233,18 @@ def make_train(args, eval_args):
         init_train_levels = jax.tree_util.tree_map(train_fn, level_buffer.level)
         init_eval_levels = jax.tree_util.tree_map(eval_fn, eval_buffer.level)
 
+        x = jnp.zeros(args.buffer_size).at[train_idxs].set(1.)
+        x /= x.sum()
+        y = jnp.zeros(args.buffer_size).at[eval_idxs].set(1.)
+        y /= y.sum()
+
         level_buffer = level_buffer.replace(
+            score=x,
             new = level_buffer.new.at[init_train_levels.buffer_id].set(False)
         )
 
         eval_buffer = eval_buffer.replace(
+            score=y,
             new = eval_buffer.new.at[init_eval_levels.buffer_id].set(False)
         )
         zeros = jnp.zeros_like(level_buffer.score)
@@ -220,13 +253,15 @@ def make_train(args, eval_args):
             args, None, level_buffer.score, level_buffer.level.env_params
         )
 
+        meta_state = MetaTrainState.from_args(args, x, y)
+
         # NOTE: batch_reset has been modified to accept a batch of env_params
         rng, _rng = jax.random.split(rng)
         init_obs, init_state = level_sampler.rollout_manager.batch_reset(_rng, init_train_levels.env_params)
         hstate = Actor.initialize_carry(init_state.time.shape)
 
         # --- Stack and return metrics ---
-        carry = (rng, actor_state, level_buffer, eval_buffer, zeros, zeros, \
+        carry = (rng, meta_state, actor_state, level_buffer, eval_buffer, zeros, zeros, \
                 hstate, init_obs, init_state)
         carry, metrics = jax.lax.scan(
             _ued_train_loop, carry, jnp.arange(args.train_steps), args.train_steps
