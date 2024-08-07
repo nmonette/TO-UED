@@ -121,14 +121,9 @@ class GDSampler(LevelSampler):
 
         rng, _rng = jax.random.split(rng)
         
-        eval_regrets = pmap(
+        eval_regret = pmap(
             self._compute_algorithmic_regret, self.num_mini_batches
-        )(score_rng, eval_agents)
-        
-        eval_dist = jnp.unique(y_level_ids, return_counts=True, size=len(eval_agents.level.buffer_id))[1]
-        eval_dist = eval_dist / eval_dist.sum()
-
-        eval_regret = jnp.dot(eval_dist, eval_regrets)
+        )(score_rng, eval_agents).mean()
 
         x_grad = -(x_lp * eval_regret).mean(axis=0)
         y_grad = (y_lp * eval_regret).mean(axis=0)
