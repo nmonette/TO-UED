@@ -259,7 +259,7 @@ def make_train(args, eval_args):
         hstate = Actor.initialize_carry(init_state.time.shape)
 
         # --- Stack and return metrics ---
-        carry = (rng, meta_state, actor_state, level_buffer, eval_buffer, zeros, zeros, \
+        carry = (rng, meta_state, actor_state, level_buffer, eval_buffer, \
                 hstate, init_obs, init_state)
         carry, metrics = jax.lax.scan(
             _ued_train_loop, carry, jnp.arange(args.train_steps), args.train_steps
