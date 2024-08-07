@@ -78,7 +78,7 @@ def make_train(args, eval_args):
             # --- Sample new levels ---
             rng, _rng = jax.random.split(rng)
             level_buffer, eval_buffer, eval_levels, x, y_lp = GDSampler.sample_step(
-                GDSampler(args), _rng, level_buffer, eval_buffer, x_grad, y_grad
+                GDSampler(args), _rng, level_buffer, eval_buffer, meta_state.x, meta_state.y
             )
 
             # --- Add new level dist to level sampler ---
