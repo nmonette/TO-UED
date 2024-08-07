@@ -254,7 +254,7 @@ class GDSampler(LevelSampler):
 
         eval_regret = pmap(
             self._compute_algorithmic_regret, self.num_mini_batches
-        )(score_rng, eval_agents).sum()
+        )(score_rng, eval_agents).mean()
 
         x_grad = -(x_lp * eval_regret).sum(axis=0) / jnp.count_nonzero(x_lp)
         y_grad = (y_lp * eval_regret).mean(axis=0)
