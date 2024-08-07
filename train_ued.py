@@ -207,11 +207,19 @@ def make_train(args, eval_args):
         init_train_levels = jax.tree_util.tree_map(train_fn, level_buffer.level)
         init_eval_levels = jax.tree_util.tree_map(eval_fn, eval_buffer.level)
 
+        x = jnp.zeros(len(level_buffer)).at[train_idxs].set(1.)
+        x = x / x.sum()
+
+        y = jnp.zeros(len(level_buffer)).at[eval_idxs].set(1.)
+        y = y / y.sum()
+
         level_buffer = level_buffer.replace(
+            score = x,
             new = level_buffer.new.at[init_train_levels.buffer_id].set(False)
         )
 
         eval_buffer = eval_buffer.replace(
+            score = y,
             new = eval_buffer.new.at[init_eval_levels.buffer_id].set(False)
         )
         zeros = jnp.zeros_like(level_buffer.score)
