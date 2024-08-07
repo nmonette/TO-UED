@@ -67,7 +67,7 @@ def make_train(args, eval_args):
         
         # --- TRAIN LOOP ---
         def _ued_train_loop(carry, t):
-            rng, meta_state, actor_state, level_buffer, eval_buffer, x_grad, y_grad, \
+            rng, meta_state, actor_state, level_buffer, eval_buffer, \
                 actor_hstate, init_obs, init_state = carry
             
             # --- Mark level finish flag ---
@@ -114,8 +114,6 @@ def make_train(args, eval_args):
             
             # --- Update meta-state ---
             meta_state = meta_state.replace(
-                prev_x_grad = x_grad,
-                prev_y_grad = y_grad,
                 x = x,
                 y = y,
                 x_lp = meta_state.x_lp.at[t % args.regret_frequency].set(x_lp),
@@ -220,7 +218,7 @@ def make_train(args, eval_args):
             }
             
             carry = (rng, meta_state,  actor_state, level_buffer, eval_buffer, \
-                x_grad, y_grad, actor_hstate, init_obs, init_state)
+                actor_hstate, init_obs, init_state)
             
             return carry, metrics
         
