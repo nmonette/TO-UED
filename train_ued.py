@@ -14,6 +14,7 @@ from experiments.parse_args import parse_args
 from experiments.logging import init_logger, log_results
 from util.jax import jax_debug_wrapper
 from util.data import Level
+from util.projection import projection_simplex_truncated
 from environments.jaxued.maze import Level as MazeLevel, prefabs
 
 from functools import partial
@@ -70,6 +71,20 @@ def make_train(args, eval_args):
             rng, meta_state, actor_state, level_buffer, eval_buffer, \
                 actor_hstate, init_obs, init_state = carry
             
+            # --- Update level distributions if necessary ---
+            identity_fn = lambda m: m
+            def update_fn(meta_state):
+                # --- Update distributions in meta-state ---
+                lr = args.ogd_learning_rate
+                trunc = args.ogd_trunc_size
+                meta_state = meta_state.replace(
+                    x = projection_simplex_truncated(meta_state.x_hat + lr * meta_state.prev_x_grad, trunc),
+                    y = projection_simplex_truncated(meta_state.y_hat + lr * meta_state.prev_y_grad, trunc)
+                )
+                return meta_state
+    
+            meta_state = jax.lax.cond(t % args.regret_frequency == 0, update_fn, identity_fn, meta_state)
+                
             # --- Mark level finish flag ---
             init_state = init_state.replace(
                 newly_done = jnp.full_like(init_state.newly_done, False)

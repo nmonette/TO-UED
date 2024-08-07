@@ -85,20 +85,18 @@ def make_meta_step(args):
         # --- Update meta-policies ---
         lr = args.ogd_learning_rate
         trunc = args.ogd_trunc_size
-        x_hat = projection_simplex_truncated(meta_state.x_hat + lr * meta_state.prev_x_grad, trunc)
-        y_hat = projection_simplex_truncated(meta_state.y_hat + lr * meta_state.prev_y_grad, trunc)
 
-        x = projection_simplex_truncated(x_hat + lr * x_grad, trunc)
-        y = projection_simplex_truncated(y_hat + lr * y_grad, trunc)
+        x_hat = projection_simplex_truncated(meta_state.x_hat + lr * x_grad, trunc)
+        y_hat = projection_simplex_truncated(meta_state.y_hat + lr * y_grad, trunc)
 
         # --- Replacing lowest scoring levels ---
         # NOTE: we would do this in `level_sampler._sample_step` if multi-state policy
         rng, train_rng, eval_rng = jax.random.split(rng, 3)
         level_sampler = GDSampler(args)
-        new_train = level_sampler._reset_lowest_scoring(train_rng, train_buffer.replace(score=x), args.num_agents)
-        new_eval = level_sampler._reset_lowest_scoring(eval_rng, eval_buffer.replace(score=y), args.num_agents)
+        new_train = level_sampler._reset_lowest_scoring(train_rng, train_buffer.replace(score=meta_state.x), args.num_agents)
+        new_eval = level_sampler._reset_lowest_scoring(eval_rng, eval_buffer.replace(score=meta_state.y), args.num_agents)
 
-        meta_state = MetaTrainState(
+        meta_state = meta_state.replace(
             x_vtable=x_vtable,
             y_vtable=y_vtable,
             regrets=jnp.zeros_like(meta_state.regrets),
@@ -108,9 +106,6 @@ def make_meta_step(args):
 
             x_hat=x_hat,
             y_hat=y_hat,
-
-            x=x,
-            y=y,
 
             x_lp = jnp.zeros_like(meta_state.x_lp),
             y_lp = jnp.zeros_like(meta_state.y_lp)
