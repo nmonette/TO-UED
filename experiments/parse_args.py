@@ -223,6 +223,14 @@ def parse_args(cmd_args=sys.argv[1:]):
         "--ogd_trunc_size", help="Truncation size for projection onto Truncated Simplex", type=float, default=1e-6
     )
 
+    # Meta-Game hyperparams (TO-UED)
+    parser.add_argument(
+        "--meta_gamma", help="Gamma for meta-game", type=float, default=0.99
+    )
+    parser.add_argument(
+        "--meta_value_lr", help="Learning rate for meta-value table", type=float, default=0.01
+    )
+
     # --- PPO ---
     parser.add_argument(
         "--clip_eps", help="Epsilon for gradient clipping (PPO)", type=float, default=0.2
