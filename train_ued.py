@@ -67,18 +67,21 @@ def make_train(args, eval_args):
         
         # --- TRAIN LOOP ---
         def _ued_train_loop(carry, t):
-            rng, meta_state, actor_state, level_buffer, eval_buffer, x_grad, y_grad, \
-                actor_hstate, init_obs, init_state = carry
+            rng, meta_state, actor_state, level_buffer, eval_buffer, actor_hstate, init_obs, init_state = carry
             
             # --- Mark level finish flag ---
             init_state = init_state.replace(
                 newly_done = jnp.full_like(init_state.newly_done, False)
             )
 
+            # --- Fill buffer with appropriate level-dist ---
+            level_buffer = level_buffer.replace(score = meta_state.x[t % args.regret_frequency])
+            eval_buffer = eval_buffer.replace(score = meta_state.y[t % args.regret_frequency])
+
             # --- Sample new levels ---
             rng, _rng = jax.random.split(rng)
             level_buffer, eval_buffer, eval_levels, x, y_lp = GDSampler.sample_step(
-                GDSampler(args), _rng, level_buffer, eval_buffer, x_grad, y_grad
+                GDSampler(args), _rng, level_buffer, eval_buffer
             )
 
             # --- Add new level dist to level sampler ---
@@ -114,10 +117,8 @@ def make_train(args, eval_args):
             
             # --- Update meta-state ---
             meta_state = meta_state.replace(
-                prev_x_grad = x_grad,
-                prev_y_grad = y_grad,
-                x = x,
-                y = y,
+                x = meta_state.x.at[t % args.regret_frequency].set(x),
+                y = meta_state.y.at[t % args.regret_frequency].set(y),
                 x_lp = meta_state.x_lp.at[t % args.regret_frequency].set(x_lp),
                 y_lp = meta_state.y_lp.at[t % args.regret_frequency].set(y_lp),
             )
@@ -219,8 +220,7 @@ def make_train(args, eval_args):
                 "solve_rate/StandardMaze3":holdout_set_success_rate[7].sum() / len(holdout_set_success_rate[0]),
             }
             
-            carry = (rng, meta_state,  actor_state, level_buffer, eval_buffer, \
-                x_grad, y_grad, actor_hstate, init_obs, init_state)
+            carry = (rng, meta_state,  actor_state, level_buffer, eval_buffer, actor_hstate, init_obs, init_state)
             
             return carry, metrics
         
@@ -261,7 +261,7 @@ def make_train(args, eval_args):
         hstate = Actor.initialize_carry(init_state.time.shape)
 
         # --- Stack and return metrics ---
-        carry = (rng, meta_state, actor_state, level_buffer, eval_buffer, zeros, zeros, \
+        carry = (rng, meta_state, actor_state, level_buffer, eval_buffer, \
                 hstate, init_obs, init_state)
         carry, metrics = jax.lax.scan(
             _ued_train_loop, carry, jnp.arange(args.train_steps), args.train_steps

@@ -96,8 +96,6 @@ class GDSampler(LevelSampler):
         rng, 
         train_buffer, 
         eval_buffer, 
-        x,
-        y
     ):
         """
         Line 1, then replenish buffers, and then line 2
@@ -106,6 +104,9 @@ class GDSampler(LevelSampler):
         TODO: make x and y the sample dist instead of xhat and yhat
         """
         batch_size = self.args.num_agents
+
+        x = train_buffer.score
+        y = eval_buffer.score
         
         # --- Sample new levels ---
         new_train = train_buffer.replace(score=x)

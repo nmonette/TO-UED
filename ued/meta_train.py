@@ -12,31 +12,34 @@ class MetaTrainState: # comments are array sizes
     y_vtable: jnp.ndarray # (args.regret_frequency + 1, )
     regrets: jnp.ndarray  # (args.regret_frequency, )
 
-    prev_x_grad: jnp.ndarray # (args.buffer_size, )
-    prev_y_grad: jnp.ndarray # (args.buffer_size, )
+    prev_x_grad: jnp.ndarray # (args.regret_frequency, args.buffer_size)
+    prev_y_grad: jnp.ndarray # (args.regret_frequency, args.buffer_size)
 
-    x_hat: jnp.ndarray # (args.buffer_size, )
-    y_hat: jnp.ndarray # (args.buffer_size, )
+    x_hat: jnp.ndarray # (args.regret_frequency, args.buffer_size)
+    y_hat: jnp.ndarray # (args.regret_frequency, args.buffer_size)
 
-    x: jnp.ndarray
-    y: jnp.ndarray
+    x: jnp.ndarray # (args.regret_frequency, args.buffer_size)
+    y: jnp.ndarray # (args.regret_frequency, args.buffer_size)
 
-    x_lp: jnp.ndarray # (args.regret_frequency, args.buffer_size, )
-    y_lp: jnp.ndarray # (args.regret_frequency, args.buffer_size, )
+    x_lp: jnp.ndarray # (args.regret_frequency, args.buffer_size)
+    y_lp: jnp.ndarray # (args.regret_frequency, args.buffer_size)
 
     @staticmethod
     def from_args(args, x_hat, y_hat):
+
+        x = jnp.tile(x_hat, (args.regret_frequency, 1))
+        y = jnp.tile(y_hat, (args.regret_frequency, 1))
         
         return MetaTrainState(
             x_vtable=jnp.ones((args.regret_frequency + 1, )),
             y_vtable=jnp.ones((args.regret_frequency + 1, )),
             regrets=jnp.ones((args.regret_frequency, )),
-            prev_x_grad=jnp.zeros((args.buffer_size, )),
-            prev_y_grad=jnp.zeros((args.buffer_size, )),
-            x_hat=x_hat, 
-            y_hat=y_hat,
-            x=x_hat,
-            y=y_hat,
+            prev_x_grad=jnp.zeros((args.regret_frequency, args.buffer_size)),
+            prev_y_grad=jnp.zeros((args.regret_frequency, args.buffer_size)),
+            x_hat=x, 
+            y_hat=y,
+            x=x,
+            y=y,
             x_lp=jnp.zeros((args.regret_frequency, args.buffer_size)),
             y_lp=jnp.zeros((args.regret_frequency, args.buffer_size))
         )
@@ -79,8 +82,8 @@ def make_meta_step(args):
             args.gae_lambda
         )
         
-        x_grad = (x_gae * meta_state.x_lp.T).mean(axis=1)
-        y_grad = (y_gae * meta_state.y_lp.T).mean(axis=1)
+        x_grad = (x_gae * meta_state.x_lp.T).T # .mean(axis=1)
+        y_grad = (y_gae * meta_state.y_lp.T).T # .mean(axis=1)
 
         # --- Update meta-policies ---
         lr = args.ogd_learning_rate
@@ -92,11 +95,12 @@ def make_meta_step(args):
         y = projection_simplex_truncated(y_hat + lr * y_grad, trunc)
 
         # --- Replacing lowest scoring levels ---
-        # NOTE: we would do this in `level_sampler._sample_step` if multi-state policy
         rng, train_rng, eval_rng = jax.random.split(rng, 3)
         level_sampler = GDSampler(args)
-        new_train = level_sampler._reset_lowest_scoring(train_rng, train_buffer.replace(score=x), args.num_agents)
-        new_eval = level_sampler._reset_lowest_scoring(eval_rng, eval_buffer.replace(score=y), args.num_agents)
+
+        # NOTE: we are using the first distributioon out of the multiple as a heuristic here
+        new_train = level_sampler._reset_lowest_scoring(train_rng, train_buffer.replace(score=x[0]), args.num_agents)
+        new_eval = level_sampler._reset_lowest_scoring(eval_rng, eval_buffer.replace(score=y[0]), args.num_agents)
 
         meta_state = MetaTrainState(
             x_vtable=x_vtable,
