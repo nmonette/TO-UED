@@ -96,6 +96,11 @@ def make_meta_step(args):
         new_train = level_sampler._reset_lowest_scoring(train_rng, train_buffer.replace(score=meta_state.x), args.num_agents)
         new_eval = level_sampler._reset_lowest_scoring(eval_rng, eval_buffer.replace(score=meta_state.y), args.num_agents)
 
+        # --- Make sure to mark levels as not new ---
+        new_train = new_train.replace(
+            new = jnp.where(x_grad != 0, False, new_train.new)
+        )
+
         meta_state = meta_state.replace(
             x_vtable=x_vtable,
             y_vtable=y_vtable,
