@@ -131,6 +131,9 @@ class GDSampler(LevelSampler):
             # new = new_train.new.at[train_levels.buffer_id].set(False)
         )
 
+        count_fn = lambda idx: jnp.zeros(len(eval_buffer)).at[y_level_ids[idx]].set(1.)
+        eval_counts = jax.vmap(count_fn)(jnp.arange(len(y_level_ids))).sum(axis=0)
+
         eval_buffer = new_eval.replace(
             score = projection_simplex_truncated(
                 jnp.where(new_eval.new, 0., eval_buffer.score), self.args.ogd_trunc_size
@@ -138,7 +141,7 @@ class GDSampler(LevelSampler):
             new = new_eval.new.at[eval_levels.buffer_id].set(False)
         )
 
-        return train_buffer, eval_buffer, eval_levels, new_train.score, y_lp.mean(axis=0)
+        return train_buffer, eval_buffer, eval_levels, new_train.score, eval_counts
         
 
     def eval_step(
