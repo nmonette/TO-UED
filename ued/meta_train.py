@@ -28,9 +28,9 @@ class MetaTrainState: # comments are array sizes
     def from_args(args, x_hat, y_hat):
         
         return MetaTrainState(
-            x_vtable=jnp.ones((args.regret_frequency + 1, )),
-            y_vtable=jnp.ones((args.regret_frequency + 1, )),
-            regrets=jnp.ones((args.regret_frequency, )),
+            x_vtable=jnp.zeros((args.regret_frequency + 1, )),
+            y_vtable=jnp.zeros((args.regret_frequency + 1, )),
+            regrets=jnp.zeros((args.regret_frequency, )),
             prev_x_grad=jnp.zeros((args.buffer_size, )),
             prev_y_grad=jnp.zeros((args.buffer_size, )),
             x_hat=x_hat, 
@@ -44,6 +44,7 @@ class MetaTrainState: # comments are array sizes
 def make_meta_step(args):
 
     def meta_step(rng, meta_state, train_buffer, eval_buffer):
+        
         # --- Updating V-tables ---
         lr = args.meta_value_lr
         gamma = args.meta_gamma
@@ -104,7 +105,7 @@ def make_meta_step(args):
         meta_state = meta_state.replace(
             x_vtable=x_vtable,
             y_vtable=y_vtable,
-            regrets=jnp.zeros_like(meta_state.regrets),
+            regrets=jnp.zeros_like(meta_state.regrets).at[0].set(meta_state.regrets[-1]),
 
             prev_x_grad=x_grad,
             prev_y_grad=y_grad,

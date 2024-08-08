@@ -141,6 +141,8 @@ def make_train(args, eval_args):
                 _rng, actor_state, eval_levels, level_buffer, eval_buffer
             )
 
+            meta_state = meta_state.replace(regrets = meta_state.regrets.at[t % args.regret_frequency].set(eval_regret))
+
             # --- Perform meta-updates if necessary ---
             identity_fn = lambda r, m, t, e: (meta_state, level_buffer, eval_buffer)
             rng, _rng = jax.random.split(rng)
@@ -148,7 +150,7 @@ def make_train(args, eval_args):
                 t % args.regret_frequency == 0,
                 meta_step_fn, identity_fn, 
                 _rng, 
-                meta_state.replace(regrets = meta_state.regrets.at[t % args.regret_frequency].set(eval_regret)), 
+                meta_state, 
                 level_buffer, 
                 eval_buffer
             )
