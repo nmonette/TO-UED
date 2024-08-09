@@ -9,7 +9,6 @@ from ued.gd_sampler import GDSampler
 from ued.level_sampler import LevelSampler
 from ued.train import train_agent
 from ued.rnn import eval_agent_nomean as eval_agent, Actor
-from ued.meta_train import make_meta_step, MetaTrainState
 from ued.uncoupled_train import make_meta_step, UncoupledMetaTrainState
 from experiments.parse_args import parse_args
 from experiments.logging import init_logger, log_results
@@ -81,11 +80,8 @@ def make_train(args, eval_args):
             # --- Sample new levels ---
             rng, _rng = jax.random.split(rng)
             level_buffer, eval_buffer, eval_levels, x, eval_counts = GDSampler.sample_step(
-                GDSampler(args), _rng, level_buffer, eval_buffer, meta_state.x, meta_state.y
+                GDSampler(args), _rng, level_buffer, eval_buffer, meta_state.x[t % args.regret_frequency], meta_state.y[t % args.regret_frequency]
             )
-
-            # --- Replensish level buffer ---
-            level_buffer = reset
 
             # --- Add new level dist to level sampler ---
             # next line: replace `x` with `level_buffer.score` and it might do better
@@ -113,12 +109,6 @@ def make_train(args, eval_args):
             count_fn = lambda idx: jnp.zeros(args.buffer_size).at[init_state.prev_idx[idx]].set(jax.lax.select(init_state.newly_done[idx], 1., 0.))
             done_counts = jax.vmap(count_fn)(jnp.arange(len(init_state.newly_done))).sum(axis=0)
 
-             # --- Update meta-state ---
-            meta_state = meta_state.replace(
-                x_lp = meta_state.x_lp.at[t % args.regret_frequency].set(x_lp),
-                y_lp = meta_state.y_lp.at[t % args.regret_frequency].set(y_lp),
-            )
-
             # --- Update level buffers ---
             rng, _rng = jax.random.split(rng)
             level_buffer, eval_buffer, eval_regret = level_sampler.eval_step(
@@ -127,8 +117,14 @@ def make_train(args, eval_args):
 
             # --- Update meta-state ---
             meta_state = meta_step_fn(
-                meta_state, done_counts, eval_counts, t % args.regret_frequency
+                meta_state.replace(regrets = meta_state.regrets.at[t % args.regret_frequency].set(eval_regret)), done_counts, eval_counts, t % args.regret_frequency
             )
+
+            # jax.debug.print("x_vtable: {}", meta_state.x_vtable)
+            # jax.debug.print("y_vtable: {}", meta_state.y_vtable)
+            # jax.debug.print("x_vsim: {}", meta_state.x_vsim)
+            # jax.debug.print("y_vsim: {}", meta_state.y_vsim)
+            # jax.debug.print("regrets: {}", meta_state.regrets)
 
             # --- Update level buffer ---
             rng, train_rng, eval_rng = jax.random.split(rng, 3)
@@ -248,7 +244,7 @@ def make_train(args, eval_args):
             args, None, level_buffer.score, level_buffer.level.env_params
         )
 
-        meta_state = MetaTrainState.from_args(args, x, y)
+        meta_state = UncoupledMetaTrainState.from_args(args, x, y)
 
         # NOTE: batch_reset has been modified to accept a batch of env_params
         rng, _rng = jax.random.split(rng)
