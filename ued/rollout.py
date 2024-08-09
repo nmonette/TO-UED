@@ -19,7 +19,8 @@ class RolloutWrapper:
         eval_rollout_len: Optional[int] = None,
         env_kwargs: dict = {},
         return_info: bool = False,
-        env = None
+        env = None,
+        gamma = 0.995
     ):
         """
         env_name (str): Name of environment to use.
@@ -39,6 +40,8 @@ class RolloutWrapper:
         self.train_rollout_len = train_rollout_len
         self.eval_rollout_len = eval_rollout_len
         self.return_info = return_info
+
+        self.gamma = gamma
 
     def batch_reset_single_env(self, rng, env_params, num_workers):
         """Reset a single environment for multiple workers, returning initial states and observations."""
@@ -105,7 +108,7 @@ class RolloutWrapper:
             next_obs, next_state, reward, done, info = self.env.step(
                 _rng, state, action, env_params
             )
-            new_cum_reward = cum_reward + reward * valid_mask
+            new_cum_reward = cum_reward + self.gamma * reward * valid_mask
             new_valid_mask = valid_mask * (1 - done)
             carry = [
                 rng,

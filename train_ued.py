@@ -129,8 +129,6 @@ def make_train(args, eval_args):
             
             # --- Update meta-state ---
             meta_state = meta_state.replace(
-                x = x,
-                y = y,
                 x_lp = meta_state.x_lp.at[t % args.regret_frequency].set(x_lp),
                 y_lp = meta_state.y_lp.at[t % args.regret_frequency].set(y_lp),
             )
@@ -142,6 +140,12 @@ def make_train(args, eval_args):
             )
 
             meta_state = meta_state.replace(regrets = meta_state.regrets.at[t % args.regret_frequency].set(eval_regret))
+
+            # jax.debug.print("x_vtable: {}", meta_state.x_vtable)
+            # jax.debug.print("y_vtable: {}", meta_state.y_vtable)
+            # jax.debug.print("regrets: {}", meta_state.regrets)
+            # jax.debug.print("x_new_count: {}", level_buffer.new.sum())
+            # jax.debug.print("y_new_count: {}", eval_buffer.new.sum())
 
             # --- Perform meta-updates if necessary ---
             identity_fn = lambda r, m, t, e: (meta_state, level_buffer, eval_buffer)
