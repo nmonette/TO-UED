@@ -92,13 +92,13 @@ def make_train(args, eval_args):
 
             # --- Sample new levels ---
             rng, _rng = jax.random.split(rng)
-            level_buffer, eval_buffer, eval_levels, x, y_lp = GDSampler.sample_step(
+            level_buffer, eval_buffer, eval_levels, _, y_lp = GDSampler.sample_step(
                 GDSampler(args), _rng, level_buffer, eval_buffer, meta_state.x, meta_state.y
             )
 
             # --- Add new level dist to level sampler ---
             # next line: replace `x` with `level_buffer.score` and it might do better
-            reset_dist = args.p_replay * x + (1 - args.p_replay) * jnp.where(level_buffer.new, 1 / level_buffer.new.sum(), 0.)
+            reset_dist = args.p_replay * meta_state.x + (1 - args.p_replay) * jnp.where(level_buffer.new, 1 / level_buffer.new.sum(), 0.)
             level_sampler = GDSampler(
                 args, None, reset_dist, level_buffer.level.env_params
             )
@@ -129,8 +129,6 @@ def make_train(args, eval_args):
             
             # --- Update meta-state ---
             meta_state = meta_state.replace(
-                x = x,
-                y = y,
                 x_lp = meta_state.x_lp.at[t % args.regret_frequency].set(x_lp),
                 y_lp = meta_state.y_lp.at[t % args.regret_frequency].set(y_lp),
             )

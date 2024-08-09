@@ -126,14 +126,14 @@ class GDSampler(LevelSampler):
         # --- Update buffers back to xhat, yhat, but with the new levels ---
         train_buffer = new_train.replace(
             score = projection_simplex_truncated(
-                jnp.where(new_train.new, 0., train_buffer.score), self.args.ogd_trunc_size
+                jnp.where(new_train.new, 0., new_train.score), self.args.ogd_trunc_size
             ),
             # new = new_train.new.at[train_levels.buffer_id].set(False)
         )
 
         eval_buffer = new_eval.replace(
             score = projection_simplex_truncated(
-                jnp.where(new_eval.new, 0., eval_buffer.score), self.args.ogd_trunc_size
+                jnp.where(new_eval.new, 0., new_eval.score), self.args.ogd_trunc_size
             ),
             new = new_eval.new.at[eval_levels.buffer_id].set(False)
         )
