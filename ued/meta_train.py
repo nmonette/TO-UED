@@ -105,7 +105,7 @@ def make_meta_step(args):
         meta_state = meta_state.replace(
             x_vtable=x_vtable,
             y_vtable=y_vtable,
-            regrets=jnp.zeros_like(meta_state.regrets).at[0].set(meta_state.regrets[-1]),
+            regrets=jnp.zeros_like(meta_state.regrets),
 
             prev_x_grad=x_grad,
             prev_y_grad=y_grad,

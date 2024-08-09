@@ -26,7 +26,8 @@ class GDSampler(LevelSampler):
                 self.args.train_rollout_len, 
                 self.max_rollout_len, 
                 env_kwargs=self.env_kwargs, 
-                env=self.env
+                env=self.env,
+                gamma=args.gamma
             )
 
     def _create_eval_agent(self, rng, level, actor_state, critic_state=None):
