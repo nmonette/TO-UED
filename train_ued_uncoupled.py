@@ -109,6 +109,13 @@ def make_train(args, eval_args):
             count_fn = lambda idx: jnp.zeros(args.buffer_size).at[init_state.prev_idx[idx]].set(jax.lax.select(init_state.newly_done[idx], 1., 0.))
             done_counts = jax.vmap(count_fn)(jnp.arange(len(init_state.newly_done))).sum(axis=0)
 
+            
+
+            # --- Make sure to mark levels as not new ---
+            level_buffer = level_buffer.replace(
+                new = jnp.where(done_counts != 0, False, level_buffer.new)
+            )
+            
             # --- Update level buffers ---
             rng, _rng = jax.random.split(rng)
             level_buffer, eval_buffer, eval_regret = level_sampler.eval_step(
@@ -125,6 +132,7 @@ def make_train(args, eval_args):
             # jax.debug.print("x_vsim: {}", meta_state.x_vsim)
             # jax.debug.print("y_vsim: {}", meta_state.y_vsim)
             # jax.debug.print("regrets: {}", meta_state.regrets)
+            jax.debug.print("{}", level_buffer.new.sum())
 
             # --- Update level buffer ---
             rng, train_rng, eval_rng = jax.random.split(rng, 3)
