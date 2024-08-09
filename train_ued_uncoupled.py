@@ -132,7 +132,6 @@ def make_train(args, eval_args):
             # jax.debug.print("x_vsim: {}", meta_state.x_vsim)
             # jax.debug.print("y_vsim: {}", meta_state.y_vsim)
             # jax.debug.print("regrets: {}", meta_state.regrets)
-            jax.debug.print("{}", level_buffer.new.sum())
 
             # --- Update level buffer ---
             rng, train_rng, eval_rng = jax.random.split(rng, 3)
